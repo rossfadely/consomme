@@ -1,5 +1,5 @@
 Foam
-============================
+===========================
 
 Deconvolution of noisy spectra.
 
