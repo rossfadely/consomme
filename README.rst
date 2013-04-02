@@ -15,6 +15,6 @@ License
 
 Copyright 2012 the authors.
 
-**mofa** is free software licensed under the *MIT License*.  For
+**foam** is free software licensed under the *MIT License*.  For
 details, see the
 `LICENSE file <https://raw.github.com/rossfadely/foam/master/LICENSE.rst>`_.
