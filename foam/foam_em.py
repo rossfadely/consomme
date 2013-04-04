@@ -1,13 +1,8 @@
-__all__ = ["Mofa"]
-
 import numpy as np
 import matplotlib.pyplot as pl
 
-from scipy.cluster.vq import kmeans
+from sklearn.cluster import KMeans
 from scipy.linalg import inv
-from matplotlib.patches import Ellipse
-
-from . import _algorithms
 
 class FoamEM(object):
     """
@@ -66,9 +61,6 @@ class FoamEM(object):
     def _initialize(self,init_ppca,maxiter=200, tol=1e-4):
 
         # Run K-means
-        # This is crazy, but DFM's kmeans returns nans/infs 
-        # for some initializations
-        self.means = kmeans(self.data,self.K)[0]
         self.run_kmeans()
         
         # Randomly assign factor loadings
@@ -116,32 +108,17 @@ class FoamEM(object):
 
 
 
-    def run_kmeans(self, maxiter=200, tol=1e-4, verbose=True):
+    def run_kmeans(self, Ninit=10):
         """
-        Run the K-means algorithm using the C extension.
-
-        :param maxiter:
-            The maximum number of iterations to try.
-
-        :param tol:
-            The tolerance on the relative change in the loss function that
-            controls convergence.
-
-        :param verbose:
-            Print all the messages?
-
+        Run the K-means algorithm using the scikit-learn's
+        implementation.
         """
-        iterations = _algorithms.kmeans(self.data, self.means,
-                                        self.kmeans_rs, tol, maxiter)
-
-        if verbose:
-            if iterations < maxiter:
-                print("K-means converged after {0} iterations."
-                        .format(iterations))
-            else:
-                print("K-means *didn't* converge after {0} iterations."
-                        .format(iterations))
-
+        km = KMeans(init='k-means++', n_clusters=self.K, n_init=Ninit)
+        km.fit(self.data)
+        self.means = km.cluster_centroids
+        print self.means
+        print self.means.shape
+        assert False
 
     def run_em(self, maxiter=400, tol=1e-4, verbose=True):
         """
@@ -320,38 +297,4 @@ class FoamEM(object):
         step = np.dot(step,np.dot(lamT,psiI))
         step = np.dot(psiI,np.dot(lam,step))
         return psiI - step
-
-    def plot_2d_ellipses(self,d1,d2, **kwargs):
-        """
-        Make a 2D plot of the model projected onto axes
-        d1 and d2.
-        """
-        for k in range(self.K):
-            mean = self.means[k,(d1, d2)]
-            cov = self.covs[k][((d1, d2),(d1, d2)), ((d1, d1), (d2, d2))]
-            self._plot_2d_ellipse(mean, cov, **kwargs)
-
-    def _plot_2d_ellipse(self, mu, cov, ax=None, **kwargs):
-        """
-        Plot the error ellipse at a point given it's covariance matrix.
-        """
-        # some sane defaults
-        facecolor = kwargs.pop('facecolor', 'none')
-        edgecolor = kwargs.pop('edgecolor', 'k')
-
-        x, y = mu
-        U, S, V = np.linalg.svd(cov)
-        theta = np.degrees(np.arctan2(U[1, 0], U[0, 0]))
-        ellipsePlot = Ellipse(xy=[x, y],
-                              width=2 * np.sqrt(S[0]),
-                              height=2 * np.sqrt(S[1]),
-                              angle=theta,
-                facecolor=facecolor, edgecolor=edgecolor, **kwargs)
-
-        if ax is None:
-            ax = pl.gca()
-        ax.add_patch(ellipsePlot)
-
-
-
 
