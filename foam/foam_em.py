@@ -115,10 +115,7 @@ class FoamEM(object):
         """
         km = KMeans(init='k-means++', n_clusters=self.K, n_init=Ninit)
         km.fit(self.data)
-        self.means = km.cluster_centroids
-        print self.means
-        print self.means.shape
-        assert False
+        self.means = km.cluster_centers_
 
     def run_em(self, maxiter=400, tol=1e-4, verbose=True):
         """
