@@ -1,0 +1,174 @@
+% We need to say how to initialize lambda and psi and why
+\documentclass[letterpaper,12pt]{article}
+\usepackage{graphicx}	
+\usepackage{natbib}	
+\usepackage{amsmath}	
+\usepackage{amsfonts}	
+\usepackage{hyperref}	
+\usepackage{bbm}	%
+\usepackage[left=3cm,top=3cm,right=3cm]{geometry}
+
+\renewcommand{\topfraction}{0.85} 
+\renewcommand{\textfraction}{0.1} 
+\parindent=0cm
+
+\newcommand{\nyu}{$^1$}
+\newcommand{\mpia}{$^2$}
+\newcommand{\vect}[1]{\boldsymbol{#1}}
+\newcommand{\data}{\vect{x}}
+\newcommand{\latent}{\vect{s}}
+\newcommand{\mean}{\vect{\mu}}
+\newcommand{\cov}{\vect{\Sigma}}
+\newcommand{\eye}{\vect{I}}
+\newcommand{\bta}{\vect{\beta}}
+\newcommand{\lmda}{\vect{\Lambda}}
+\newcommand{\ps}{\vect{\Psi}}
+\newcommand{\sig}{\vect{\sigma_{obs}^2}}
+\newcommand{\et}{\vect{\eta^2}}
+
+\usepackage{url}
+
+\title{Notes on Gradients for applying factor analyzers to spectra}
+\author{Ross Fadely\nyu\\
+\\
+\small
+\nyu Center for Cosmology and Particle Physics,
+                        Department of Physics, New York University,\\ \small
+                        4 Washington Place, New York, NY, 10003, USA \\
+}
+\begin{document}
+\maketitle
+
+
+\section{Purpose}
+
+
+\section{Expectation-Maximization}
+
+Why is this clunky for our purposes?
+
+\section{Negative log-likelihood and Gradients}
+
+Definitions -- \\ \\
+\begin{tabular}{lcl}
+$K$ &:&the number of mixture components, subscripted by $k$\\
+$M$&:& the number of latent dimensions\\
+$D$&:& the dimensionality of the data's features, subscripted by $j$\\
+$N$ &:&the number of data points, subscripted by $i$\\
+$\data$ &:&data which is a $N \times D$ dimensional matrix\\ 
+$\sig$ &:& observational variance model, which is a $N \times D$ dimensional matrix\\ 
+$\et$ &:& jitter, which can be a scalar, vector, or tensor...\\ 
+$\lmda_k$ &:&the transformation matrix for $\latent_k$, dimension
+$D \times M$ subscripted with $j$ rows and $l$ columns\\
+$\ps_k$ &:&the diagonal variance matrix for component $k$, dimension $D\times D$\
+\end{tabular}
+
+\vspace{12pt}
+Calculations below have been faciltated using those presented 
+in a note by {\tt \href{http://bit.ly/11JqOFK}{Jason Rennie (2006)}}.
+The primary difference is that we are interested in an alteration to
+the $\ps$ matrix (which he writes as diag($\sigma^2$)).  That is, 
+we require each datum has its own $\Psi$, and that it is 
+diag($\sig+\et$), where $\sig$ is the
+observational noise spectrum for the object and $\eta$ is a jitter
+added to the diagonal. \\
+
+For a single factor analzer, the negative log-likelihood $J_i$ for a single spectrum $i$ can be
+written as
+
+\begin{eqnarray}\displaystyle
+J_{i} &=& C + \frac{1}{2}\left(D\log|\Sigma_i| + \sum_{i=1}^N(\data_i-\mean)\Sigma_i^{-1}(\data_i-\mean)^T\right)
+\quad .
+\label{eqn:nll}
+\end{eqnarray}
+
+Note that the total negative log-likelihood is the sum over $J_i$.
+
+\subsection{Jitter Gradient}
+
+Lets assume jitter is constant across the data but not along
+dimensionality, meaning $\et$ is a $D$ dimensional vector.  From the
+first piece of Equation \ref{eqn:nll} we have:
+
+\begin{eqnarray}\displaystyle
+\frac{\partial J_1}{\partial \eta_j^2} &=& D\sum_i \sum_{u,v}
+\frac{\partial \log|\Sigma_i|}{\partial
+  \Sigma_{iuv}}\frac{\Sigma_{iuv}}{\partial \eta_j^2} \\
+&=& D \sum_i \Sigma_{jj}
+\quad .
+\label{eqn:gradjit1}
+\end{eqnarray}
+
+and for the second we have:
+
+\begin{eqnarray}\displaystyle
+\frac{\partial J_2}{\partial \eta_j^2} &=& \sum_i \sum_{p,q,u,v}
+[\data_i-\mean]_p [\data_i-\mean]_q\frac{\partial \Sigma^{-1}_{ipq}}{\partial
+  \Sigma_{iuv}}\frac{\Sigma_{iuv}}{\partial \eta_j^2} \\
+&=& -\sum_i \sum_{p,q}[\data_i-\mean]_p [\data_i-\mean]_q\Sigma_{bj}^{-1}\Sigma_{jc}^{-1}\\
+&=& -\sum_i \Sigma_{j.}^{-1}[\data_i-\mean]^T [\data_i-\mean]\Sigma_{.j}^{-1}
+\quad .
+\label{eqn:gradjit2}
+\end{eqnarray}
+
+The notation $\Sigma_{.j}$ means the $j$th column of $\Sigma$.
+
+\subsection{Factor Loading Gradient}
+
+\begin{eqnarray}\displaystyle
+\frac{\partial J_1}{\partial \Lambda_{lj}} &=& D\sum_i \sum_{u,v}
+\frac{\partial \log|\Sigma_i|}{\partial
+  \Sigma_{iuv}}\frac{\Sigma_{iuv}}{\partial \Lambda_{lj}} \\
+&=& D \sum_i \left[\sum_v\Sigma^{-1}_{ilv}\Lambda_{vj} + \sum_v\Sigma^{-1}_{ilu}\Lambda_{uj}\right]\\
+&=& D \sum_i \Sigma^{-1}_{il.}\Lambda_{.j}
+\quad .
+\label{eqn:lambda1}
+\end{eqnarray}
+
+Next,
+
+\begin{eqnarray}\displaystyle
+\frac{\partial J_2}{\partial \Lambda_{lj}} &=&  \sum_i \sum_{p,q,u,v}
+[\data_i-\mean]_p [\data_i-\mean]_q\frac{\partial \Sigma^{-1}_{ipq}}{\partial
+  \Sigma_{iuv}}\frac{\Sigma_{iuv}}{\partial \Lambda_{lj}} \\
+&=& - \sum_i \sum_{p,q,u} [\data_i-\mean]_p [\data_i-\mean]_q
+\Sigma^{-1}_{ipu}\Sigma^{-1}_{ilq}\Lambda_{uj} \\
+&&  - \sum_i \sum_{p,q,v} [\data_i-\mean]_p [\data_i-\mean]_q
+\Sigma^{-1}_{ipl}\Sigma^{-1}_{ivq}\Lambda_{vj} \\
+&=& -2 \sum_i \Sigma_{l.}^{-1}[\data_i-\mean]^T [\data_i-\mean]\Sigma^{-1}\Lambda_{.j}
+\quad .
+\label{eqn:gradlambda2}
+\end{eqnarray}
+
+\subsection{Mean Gradient}
+
+\begin{eqnarray}\displaystyle
+\frac{\partial J_1}{\partial \mean_{j}} &=&  0
+\quad .
+\label{eqn:gradmean1}
+\end{eqnarray}
+
+and 
+
+\begin{eqnarray}\displaystyle
+\frac{\partial J_2}{\partial \mean_{j}} &=&  -\sum_{i,p}
+[\data_i-\mean]_p\Sigma_{pj}^{-1}  -\sum_{i,q}
+\Sigma_{jq}^{-1} [\data_i-\mean]_q \\
+&=&  -2 \sum_{i,p} [\data_i-\mean]_p\Sigma_{pj}^{-1}q \\
+&=& -2 \sum_i [\data_i-\mean] \Sigma_{.j}^{-1}
+\quad .
+\label{eqn:gradmean2}
+\end{eqnarray}
+
+Where the last two steps make use of the fact that $\Sigma$ is a
+symmetric matrix.
+
+\section{Conjugate Gamma prior and Gradients}
+
+Fill in...
+
+\section{Bibliography}
+
+\href{http://bit.ly/11JqOFK}{Rennie's notes}
+
+\end{document}
