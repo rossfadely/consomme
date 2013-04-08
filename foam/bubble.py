@@ -26,7 +26,7 @@ class SingleFA(object):
         self.jits = np.zeros(self.D)
 
         self.make_psis()
-        self.make_covs()
+        #self.make_covs()
 
     def run_kmeans(Ninit=10):
         """
@@ -38,8 +38,12 @@ class SingleFA(object):
         return km.cluster_centers_
 
     def make_psis(self):
-        # N x D
-        return self.obs_var + self.jits[None,:]
+        # N x D x D
+        ind = np.arange(self.D)
+        self.psis = np.zeros((self.N,self.D,self.D))
+        self.psis[:,ind,ind] = self.obs_var + self.jits[None,:]
+        print self.psis[0,:,:]
+        print self.psis.shape
 
     def make_covs(self):
 
