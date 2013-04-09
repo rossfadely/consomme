@@ -1,0 +1,149 @@
+\documentclass[12pt]{article}
+
+\newcommand{\equationname}{equation}
+\newcommand{\equationnames}{\equationname s}
+\newcommand{\given}{\,|\,}
+\newcommand{\setof}[1]{\left\{{#1}\right\}}
+\newcommand{\transpose}[1]{{#1}^{\!{\mathsf{T}}}}
+
+\begin{document}
+
+Imagine you have a set of $N$ $d$-dimensional data points $D_n$ (that
+is, each of the $D_n$ can be treated as a $d$-element vector), and
+imagine that these $N$ data points are expected to be similar in many
+ways, but that none of them is observed at sufficient signal-to-noise
+for your scientific purposes.  Imagine further that for every datum
+$D_n$ you have a variance tensor $\sigma^2_n$ that gives the noise
+variance.  This tensor will be diagonal if there is independent noise
+in every pixel or dimension of the vector.
+
+One option you have---to find the signal in the noisy data---is to
+stack or co-add or average the data points.  As long as the noise in
+the data is uncorrelated in appropriate ways, and as long as the data
+points are similar in appropriate ways, this stack should have higher
+signal-to-noise than any individual data point.  Stacking of this kind
+has been hugely productive in astrophysics; it has led to many
+discoveries.
+
+The best stacking procedure (for most purposes, but we will return to
+this below) is an inverse-variance weighted mean, which is
+\begin{eqnarray}\label{eq:stack}
+\hat{\mu}
+ &\leftarrow&
+\left[\sum_{n=1}^N \sigma^{-2}_n\right]^{-1}\cdot\left[\sum_{n=1}^N \sigma^{-2}_n\cdot D_n\right]
+ \quad ,
+\end{eqnarray}
+where implicitly $\sigma^{-2}_n$ is a $d\times d$ matrix
+representation of the inverse of the variance tensor $\sigma^2_n$, the
+inverse operation is a matrix inverse, the multiplies are matrix
+multiplies, and $\hat{\mu}$ and $D_n$ are column vectors.  Again, in
+the case of element-to-element uncorrelated noise, the tensor and its
+inverse are both diagonal and trivial; indeed the weighted mean
+becomes
+\begin{eqnarray}
+\hat{\mu}_i
+ &\leftarrow&
+\left[\sum_{n=1}^N \sigma^{-2}_{ni}\right]^{-1}\,\left[\sum_{n=1}^N \sigma^{-2}_{ni}\cdot D_{ni}\right]
+ \quad ,
+\end{eqnarray}
+where $\hat{\mu}_i$ is the $i$th element of the vector $\hat{\mu}$,
+$\sigma^{-2}_{ni}$ is the inverse variance of the noise contributing
+to the $i$th element of the vector $D_n$, and $D_{ni}$ is that $i$th
+element.
+
+The validity of the stacking procedure relies on a few assumptions,
+most of which are violated significantly in most contexts in which
+stacking is used.  These include the following:
+\begin{itemize}
+\item Stacking relies on the noise being close to Gaussian or at least
+  zero-mean, and uncorrelated between one data point $D_n$ and another
+  $D_{n'}$.
+\item It implicitly assumes that there is no intrinsic variation in
+  the data points being stacked or at lease that the variation will
+  ``average out'' or not affect the scientific conclusions of
+  interest.
+\item To get the best signal-to-noise, the data ought to be averaged
+  with an inverse-variance weight; if one data point is much better
+  measured than the others, the stacking becomes useless, either
+  because inverse-variance-weighting makes it overly dependent on a
+  single data point, or else because using uniform weights will
+  noisify the less noisy datum.  That is, it relies on the data all
+  being comparable in quality.
+\item It assumes that the noise variances are known and accurate.
+\end{itemize}
+
+...There are many other kinds of stacks you might do, like ones that
+are luminosity-weighted or etc...
+
+Many share the intuition that stacking must not be the best thing that
+can be done, because the assumptions are often violated, the data
+often show variability that is just as interesting as the mean, and
+because all good data analysis methods are probabilistic; they involve
+writing down a probability for the data given parameters.  Of course
+the stack as given above in \equationname~(\ref{eq:stack}) \emph{is}
+the maximum-likelihood answer for a particular restricted model.  It
+is the maximum-likelihood when all the assumptions above hold, and the
+noise is Gaussian.  That is, when the likelihood is
+\begin{eqnarray}
+p(D\given\mu)
+ &=&
+\prod_{n=1}^N p(D_n\given\mu)
+\\
+p(D_n\given\mu)
+ &=&
+N(D_n\given\mu,\sigma^2_n)
+\quad ,
+\end{eqnarray}
+where implicitly $D$ is the totality of the data or the set of all
+$D_n$, and $N(x\given m,V)$ is the normal distribution for $x$ given
+mean $m$ and variance $V$.
+
+Here we propose a generalization of this likelihood function, based on
+a Factor Analyzer (citation).  To model the tendency to underestimate
+noise variances, we add a diagnoal ``jitter'' contribution $S^2\,I$,
+where $S^2$ is a scalar and $I$ is the $d\times d$ identity matrix, to
+the estimated noise variance tensors.  We model the intrinsic variance
+of the population with a rank-$K$ contribution to the total variance,
+with $K<D$.  This permits variation of the data in a $K$-dimensional
+subspace spanned or defined by $K$ eigenvectors $v_k$.  The model is
+\begin{eqnarray}\label{eq:fa1}
+\theta
+ &\equiv&
+\setof{\mu, S^2, \setof{v_k}_{k=1}^K}
+\\
+p(D\given\theta)
+ &=&
+\prod_{n=1}^N p(D_n\given\theta)
+\\
+p(D_n\given\theta)
+ &=&
+N(D_n\given\mu,V^2_n)
+\\\label{eq:fa2}
+V^2_n
+ &\equiv&
+\sigma^2_n + S^2\,I + \sum_{k=1}^K v_k\,\transpose{v_k}
+\quad ,
+\end{eqnarray}
+where, implicitly, the $d$-dimensional eigenvectors $v_k$ are column
+vectors.  There are $[D + 1 + K\,D]$ parameters if the $v_k$ are not
+required to be orthogonal.  Because we haven't multiplied in
+eigenvalues, the eigenvectors are not normalized; they have magnitudes
+set by the root-variance along the directions they indicate.  That is,
+the $v_k$ are neither orthogonal nor normal in the default description
+(more on this below).  The model of \equationnames~(\ref{eq:fa1})
+through (\ref{eq:fa2}) is both an extension of (because it makes use
+of known and heteroskedastic variance tensors $\sigma_n$) and a
+restriction of (because it doesn't permit arbitrary diagonal variance)
+the canonical Factor Analyzer, but it is very closely related.
+Because it contains a subspace spanned by the $K$ eigenvectors, but is
+also a generative model, it is also closely related to Probabilistic
+Principal Components Analysis (citation).  We will call this model a
+``Factor Analyzer'' from here on.
+
+...Now optimize to get the parameters... discuss optimization and the
+standard algorithm...
+
+...Then what priors might you put on the parameters... How that can
+translate into a useful regularization...
+
+\end{document}
