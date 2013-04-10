@@ -94,7 +94,7 @@ first piece of Equation \ref{eqn:nll} we have:
 \frac{\partial J_1}{\partial \eta_j^2} &=& D\sum_i \sum_{u,v}
 \frac{\partial \log|\Sigma_i|}{\partial
   \Sigma_{iuv}}\frac{\Sigma_{iuv}}{\partial \eta_j^2} \\
-&=& D \sum_i \Sigma_{jj}
+&=& D \sum_i \Sigma_{jj}^{-1}
 \quad .
 \label{eqn:gradjit1}
 \end{eqnarray}

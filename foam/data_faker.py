@@ -21,14 +21,18 @@ def default_fake(N):
     lam2 = data[:,0]
     sed2 = data[:,1]
 
+    noise_level = 3e-4 # hand tuned foo
+
     assert np.sum(lam1-lam2)==0.0, 'Same wavelength grid'
 
     spectra = create_spectra(N,sed1,sed2)
-    return lam1,spectra
+    noise = noise_level * np.random.randn(spectra.shape[0],
+                                          spectra.shape[1])
+    return lam1,spectra+noise,noise_level
 
 if __name__=='__main__':
     N = 10
-    l,s = default_fake(N)
+    l,s,nl = default_fake(N)
     for i in range(N):
         pl.plot(l,s[i,:])
     pl.xlim(3000,10000)
