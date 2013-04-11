@@ -40,7 +40,6 @@ class Bubble(object):
         # inverse variance weighted mean
         self.mean = np.sum(self.data / self.obsvar,axis=0) / \
             np.sum(1.0 / self.obsvar,axis=0)
-        self.mean[500:600] *= 0.9
 
         # use EM PCA to initialize factor loadings
         if self.M==0:
