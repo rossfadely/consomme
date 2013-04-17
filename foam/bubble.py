@@ -19,12 +19,12 @@ class Bubble(object):
         self.Kmax = Kmax
         self.K = 1
         self.M = latent_dim
-        self.jitter = np.zeros(self.D)
+        self.jitter = np.zeros(self.D) 
 
         # constant learning rates... fix soon.
         self.mean_rate = 1.e-8 # ok for now...
-        self.jitter_rate = 1.e-8
-        self.lambda_rate = 1.e-8
+        self.jitter_rate = 1.e-8 # slams to zero
+        self.lambda_rate = 1.e-3 # no clue
 
         # Suffling the data
         ind = np.random.permutation(self.N)
@@ -35,6 +35,7 @@ class Bubble(object):
         self.initial_mean = self.mean.copy()
         self.initial_jitter = self.jitter.copy()
         self.initial_lambda = self.lam.copy()
+        self.initial_nll = self.total_negative_log_likelihood()
         self.run_inference()
 
     def initialize(self):
@@ -116,6 +117,14 @@ class Bubble(object):
             pt2[:,m] = np.dot(self.inv_cov,v[m,:])
         return 2. * (self.D * pt1 - pt2)
     
+    def total_negative_log_likelihood(self):
+        totnll = 0.0
+        for i in range(self.N):
+            self.datum = self.data[i,:]
+            self.variance = self.obsvar[i,:]
+            self.invert_cov()
+            totnll += self.single_negative_log_likelihood()
+        return totnll
         
     def single_negative_log_likelihood(self):
         cov = self.make_cov()
