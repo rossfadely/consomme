@@ -7,17 +7,20 @@ class Bubble(object):
     """
     Factor Analysis deconvolution, using online learning.
     """
-    def __init__(self,data,obsvar,latent_dim,Kmax):
+    def __init__(self,data,obsvar,latent_dim,
+                 max_iter=100000,check_factor=1,
+                 Nosc=5):
         """
 
         """
         assert data.shape==obsvar.shape, 'Data and obs. ' + \
             'variance have different shapes'
+        if check_factor<1: 
+            print 'Warning: checking for convergence ' + \
+                'before seeing all the data.'
 
         self.N = data.shape[0]
         self.D = data.shape[1]
-        self.Kmax = Kmax
-        self.K = 1
         self.M = latent_dim
         self.jitter = np.zeros(self.D) 
 
@@ -32,11 +35,11 @@ class Bubble(object):
         self.obsvar = obsvar[ind,:]
 
         self.initialize()
-        self.initial_mean = self.mean.copy()
+        self.initial_mean   = self.mean.copy()
         self.initial_jitter = self.jitter.copy()
         self.initial_lambda = self.lam.copy()
-        self.initial_nll = self.total_negative_log_likelihood()
-        self.run_inference()
+        self.initial_nll    = self.total_negative_log_likelihood()
+        self.run_inference(max_iter,check_factor,Nosc)
 
     def initialize(self):
 
@@ -69,13 +72,39 @@ class Bubble(object):
             foo = np.linalg.inv(np.eye(self.M) + np.dot(lamT,psiIlam))
             self.inv_cov = psiI - np.dot(psiIlam,np.dot(foo,bar))
 
-    def run_inference(self):
+    def run_inference(self,max_iter,check_factor,Nosc):
 
-        for ii in range(self.N):
+        check_iter = np.round(check_factor * self.N)
 
-            if (ii%100)==0: print 'Iteration %d' % ii
-            i = np.mod(ii,self.data.shape[0])
-            
+        count = 0
+        nll_best = np.Inf
+        nll = np.Inf
+        for ii in range(max_iter):
+
+            if (ii%check_iter)==0: 
+                nll_new = self.total_negative_log_likelihood()
+                print 'Iteration %d has neg. log likelhood %g' % (ii,nll_new)
+                dlt_nll = nll - nll_new
+                if nll_new<nll_best:
+                    lam = self.lam
+                    jitter = self.jitter
+                    mean = self.mean
+                    nll_best = nll_new
+                if (dlt_nll<0.): 
+                    count += 1
+                    if count==Nosc:
+                        self.mean = mean
+                        self.lam = lam
+                        self.jitter = jitter
+                        self.nll = nll_best
+                        break
+                nll = nll_new
+            if (ii%self.N)==0:
+                ind = np.random.permutation(self.N)
+                self.data = self.data[ind,:]
+                self.obsvar = self.obsvar[ind,:]
+
+            i = np.mod(ii,self.data.shape[0])            
             self.datum = self.data[i,:]
             self.variance = self.obsvar[i,:]
 
