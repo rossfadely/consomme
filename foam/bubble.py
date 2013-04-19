@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as pl
 
 from empca import *
+from rotate_factor import varimax
 
 class Bubble(object):
     """
@@ -27,7 +28,7 @@ class Bubble(object):
         # constant learning rates... fix soon.
         self.mean_rate = 1.e-8 # ok for now...
         self.jitter_rate = 1.e-8 # slams to zero
-        self.lambda_rate = 1.e-3 # no clue
+        self.lambda_rate = 1.e-5 # no clue
 
         # Suffling the data
         ind = np.random.permutation(self.N)
@@ -52,7 +53,8 @@ class Bubble(object):
             self.lam = np.zeros(1)
         else:
             empca = EMPCA(self.data.T,self.M)
-            self.lam = empca.lam
+            R = varimax(empca.lam)
+            self.lam = np.dot(empca.lam,R)
             
     def invert_cov(self):
         """

@@ -35,7 +35,7 @@ def default_fake(N,noise_level=3e-4,rescale=0.25,seed=None):
     spectra /= factor
     noise   /= factor
     jitter  /= factor
-    return lam1,spectra,spectra+noise+jitter,rescale
+    return lam1,spectra,spectra+noise+jitter,1./factor
 
 
 if __name__=='__main__':
