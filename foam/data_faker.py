@@ -12,7 +12,7 @@ def create_spectra(Nspec,sed1,sed2):
     sed2[None,:] * (1. - frac[:,None])
     return spec
 
-def default_fake(N,noise_level=3e-4,rescale=0.25,seed=None):
+def default_fake(N,noise_level=0.05,rescale=0.25,seed=None):
     data = np.loadtxt('../seds/Ell1_A_0.sed')
     lam1 = data[:,0]
     sed1 = data[:,1]
@@ -26,16 +26,13 @@ def default_fake(N,noise_level=3e-4,rescale=0.25,seed=None):
     if seed!=None:
         np.random.seed(seed)
 
-    spectra = create_spectra(N,sed1,sed2)
+    spectra = create_spectra(N,sed1,sed2) * 500.
+    noise_level *= np.mean(spectra)
     noise = noise_level * np.random.randn(spectra.shape[0],
                                           spectra.shape[1])
     jitter = noise_level * np.random.randn(spectra.shape[0],
                                           spectra.shape[1])
-    factor   = noise_level / rescale
-    spectra /= factor
-    noise   /= factor
-    jitter  /= factor
-    return lam1,spectra,spectra+noise+jitter,1./factor
+    return lam1,spectra,spectra+noise+jitter,noise_level
 
 
 if __name__=='__main__':

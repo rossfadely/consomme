@@ -28,7 +28,7 @@ class Bubble(object):
         # constant learning rates... fix soon.
         self.mean_rate = 1.e-8 # ok for now...
         self.jitter_rate = 1.e-8 # slams to zero
-        self.lambda_rate = 1.e-5 # no clue
+        self.lambda_rate = 1.e-3 # no clue
 
         # Suffling the data
         ind = np.random.permutation(self.N)
@@ -45,8 +45,11 @@ class Bubble(object):
     def initialize(self):
 
         # inverse variance weighted mean
-        self.mean = np.sum(self.data / self.obsvar,axis=0) / \
-            np.sum(1.0 / self.obsvar,axis=0)
+        if np.sum(self.obsvar)!=0.0:
+            self.mean = np.sum(self.data / self.obsvar,axis=0) / \
+                np.sum(1.0 / self.obsvar,axis=0)
+        else:
+            self.mean = np.mean(self.data,axis=0)
 
         # use EM PCA to initialize factor loadings
         if self.M==0:
@@ -66,13 +69,17 @@ class Bubble(object):
             # repeated in lemma
             lam = self.lam
             lamT = lam.T
-            psiI = np.diag(1.0 / (self.jitter + self.variance))
-            psiIlam = np.dot(psiI,lam)
+            if np.sum(self.jitter+self.variance)!=0.0:
+                psiI = np.diag(1.0 / (self.jitter + self.variance))
+                psiIlam = np.dot(psiI,lam)
 
-            # the lemma
-            bar = np.dot(lamT,psiI)
-            foo = np.linalg.inv(np.eye(self.M) + np.dot(lamT,psiIlam))
-            self.inv_cov = psiI - np.dot(psiIlam,np.dot(foo,bar))
+                # the lemma
+                bar = np.dot(lamT,psiI)
+                foo = np.linalg.inv(np.eye(self.M) + np.dot(lamT,psiIlam))
+                self.inv_cov = psiI - np.dot(psiIlam,np.dot(foo,bar))
+            else:
+                # fix to lemma-like version
+                self.inv_cov = np.linalg.inv(np.dot(lam,lamT))
 
     def run_inference(self,max_iter,check_factor,Nosc):
 
@@ -114,7 +121,7 @@ class Bubble(object):
             self.make_gradient_step()
 
     def make_gradient_step(self):
-
+        
         self.mean -= self.mean_rate * self.mean_gradients()
         self.jitter -= self.jitter_rate * self.jitter_gradients()
         self.lam -= self.lambda_rate * self.lambda_gradients()
@@ -213,12 +220,11 @@ class Bubble(object):
         parm[ind] += h
         self.invert_cov()
         l1 = self.single_negative_log_likelihood()
-        parm[ind] -= 2. * h
+        parm[ind] -= h
         self.invert_cov()
         l2 = self.single_negative_log_likelihood()
-        parm[ind] += h
-        
-        return (l1 - l2) / (2. * h)
+
+        return (l1 - l2) / (h)
 
 
 
