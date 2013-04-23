@@ -17,4 +17,4 @@ Copyright 2013 the authors.
 
 **foam** is free software licensed under the *MIT License*.  For
 details, see the
-`LICENSE file <https://raw.github.com/rossfadely/foam/master/LICENSE.rst>`_.
+`LICENSE file <https://raw.github.com/rossfadely/consomme/master/LICENSE.rst>`_.
