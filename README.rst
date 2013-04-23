@@ -1,5 +1,4 @@
-
-Foam
+Consomme
 ===========================
 
 Deconvolution of noisy spectra.
