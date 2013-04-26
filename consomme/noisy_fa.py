@@ -4,7 +4,7 @@ import matplotlib.pyplot as pl
 from empca import *
 from rotate_factor import varimax
 
-class Bubble(object):
+class FAModel(object):
     """
     Factor Analysis deconvolution, using online learning.
     """
