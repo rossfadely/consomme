@@ -178,6 +178,19 @@ class Bubble(object):
         lamlamT = np.dot(self.lam,self.lam.T)
         return psi+lamlamT
 
+    def single_slogdet_cov(self):
+        """
+        Return sign and value of log det of covariance,
+        using the matrix determinant lemma
+        """
+        psid = self.variance+self.jitter
+        pt1 = np.eye(self.M) + np.dot(self.lam.T,self.lam / psid[:,None])
+        det = np.linalg.det(pt1) * np.prod(psid)
+        sgn = 1
+        if det<0:
+            sgn = -1
+        return sgn, np.log(np.abs(det))
+
     def _check_gradients(self,Ncheck = 10):
 
         mgrad = self.mean_gradients()
