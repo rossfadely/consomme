@@ -7,7 +7,6 @@ def svd_pca(data):
     
     `data` is a numpy array, n_samples by n_dimensions
     """
-    U, S, V = np.linalg.svd(data)
-    eigvec = V.T
+    U, S, eigvec = np.linalg.svd(data)
     eigval = S ** 2. / (data.shape[0] - 1.)
     return eigvec, eigval
