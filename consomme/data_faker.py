@@ -34,7 +34,8 @@ def default_fake(N,noise_level=0.05,seed=None):
                                           spectra.shape[1])
     return lam1,spectra,spectra+noise+jitter,noise_level
 
-def richer_fake(N,Neig,noise_level=0.05,Ngauss=3,seed=None,wavemin=3000,wavemax=10000):
+def richer_fake(N,Neig,noise_level=0.05,Ngauss=3,seed=None,
+                wavelimits=(None,None)):
     """
     Taking some eigenspectra from SDSS/Yip '04, constructing a toy.
     Returned spectra are zero mean.
@@ -69,8 +70,13 @@ def richer_fake(N,Neig,noise_level=0.05,Ngauss=3,seed=None,wavemin=3000,wavemax=
     for i in range(N):
         data[i,(wl-1)/2:-(wl-1)/2] = np.convolve(w/w.sum(),data[i,:],mode='valid')
 
+    # trim wavelength range
+    if wavelimits[0]!=None:
+        ind  = np.where((eiglamb>wavelimits[0]) & (eiglamb<wavelimits[1]))
+        data = data [:,ind] 
+        
     # multiply to get mean to order unity
-    spectra = data / np.median(data)
+    spectra = data / np.mean(data)
 
     # adjust noise
     noise_level *= np.mean(spectra)
