@@ -12,7 +12,7 @@ def create_spectra(Nspec,sed1,sed2):
     sed2[None,:] * (1. - frac[:,None])
     return spec
 
-def default_fake(N,noise_level=0.05,rescale=0.25,seed=None):
+def default_fake(N,noise_level=0.05,seed=None):
     data = np.loadtxt('../seds/Ell1_A_0.sed')
     lam1 = data[:,0]
     sed1 = data[:,1]
@@ -34,11 +34,50 @@ def default_fake(N,noise_level=0.05,rescale=0.25,seed=None):
                                           spectra.shape[1])
     return lam1,spectra,spectra+noise+jitter,noise_level
 
+def richer_fake(N,Neig,noise_level=0.05,Ngauss=3,seed=None,wavemin=3000,wavemax=10000):
+    """
+    Taking some eigenspectra from SDSS/Yip '04, constructing a toy.
+    Returned spectra are zero mean.
+    """
 
-if __name__=='__main__':
-    N = 10
-    l,s,nl = default_fake(N)
+    # load eigenspectra
+    for i in range(Neig):
+        d = np.loadtxt('../seds/galaxyKL_eigSpec_'+str(i+1)+'.dat')
+        if i==0:
+            eigspec = np.zeros((Neig,d.shape[0]))
+            eiglamb = d[:,0]
+        eigspec[i,:] = d[:,1] / np.sqrt(np.sum(d[:,1]**2.))
+
+    # coefficients to give something like early types
+    a1s = np.random.rand(N) * 0.1 + 0.9
+    phi = np.random.rand(N) * 12.5 + 7.5
+    a2s = a1s * np.tan(phi*np.pi/180.)
+    tta = np.random.rand(N) * 6 + 86
+    a3s = np.cos(tta*np.pi/180.)
+    aas = np.zeros((N,3))
+    aas[:,0] = a1s
+    aas[:,1] = a2s
+    aas[:,2] = a3s
+    aas /= np.sum(aas,axis=1)[:,None]
+
+    # make the data
+    data = np.sum(aas[:,:,None] * eigspec[None,:,:],axis=1)
+
+    # smooth to make it less noisy
+    wl = 21
+    w = np.ones(wl,'d')
     for i in range(N):
-        pl.plot(l,s[i,:])
-    pl.xlim(3000,10000)
-    pl.show()
+        data[i,(wl-1)/2:-(wl-1)/2] = np.convolve(w/w.sum(),data[i,:],mode='valid')
+
+    # multiply to get mean to order unity
+    spectra = data / np.median(data)
+
+    # adjust noise
+    noise_level *= np.mean(spectra)
+
+    # noise, jitter
+    noise = noise_level * np.random.randn(spectra.shape[0],
+                                          spectra.shape[1])
+    jitter = noise_level * np.random.randn(spectra.shape[0],
+                                          spectra.shape[1])
+    return lamb,spectra,spectra+noise+jitter,noise_level
