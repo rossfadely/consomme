@@ -86,4 +86,5 @@ def richer_fake(N,Neig,noise_level=0.05,Ngauss=3,seed=None,
                                           spectra.shape[1])
     jitter = noise_level * np.random.randn(spectra.shape[0],
                                           spectra.shape[1])
+    
     return lamb,spectra,spectra+noise+jitter,noise_level
