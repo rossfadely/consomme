@@ -10,4 +10,3 @@ def svd_pca(data):
     U, S, eigvec = np.linalg.svd(data)
     eigval = S ** 2. / (data.shape[0] - 1.)
     return eigvec, eigval
-

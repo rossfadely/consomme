@@ -35,7 +35,7 @@ def default_fake(N,noise_level=0.05,seed=None):
     return lam1,spectra,spectra+noise+jitter,noise_level
 
 def richer_fake(N,Neig,noise_level=0.05,Ngauss=3,seed=None,
-                wavelimits=(None,None)):
+                wavelimits=(None,None),subtract_mean=False):
     """
     Taking some eigenspectra from SDSS/Yip '04, constructing a toy.
     Returned spectra are zero mean.
@@ -55,11 +55,17 @@ def richer_fake(N,Neig,noise_level=0.05,Ngauss=3,seed=None,
     a2s = a1s * np.tan(phi*np.pi/180.)
     tta = np.random.rand(N) * 6 + 86
     a3s = np.cos(tta*np.pi/180.)
-    aas = np.zeros((N,3))
+    aas = np.zeros((N,Neig))
+    assert Neig>1
     aas[:,0] = a1s
     aas[:,1] = a2s
-    aas[:,2] = a3s
-    aas /= np.sum(aas,axis=1)[:,None]
+    if Neig>2:
+        aas[:,2] = a3s
+        mag = np.max(np.sqrt(aas[:,2]**2.)) * 0.1
+        for i in range(Neig-3):
+            aas[:,i+3] = (np.random.rand(N) - 0.5) * 2 * mag
+        mag *= 0.1
+    aas /= np.sqrt(np.sum(aas**2.,axis=1))[:,None]
 
     # make the data
     data = np.sum(aas[:,:,None] * eigspec[None,:,:],axis=1)
@@ -72,11 +78,17 @@ def richer_fake(N,Neig,noise_level=0.05,Ngauss=3,seed=None,
 
     # trim wavelength range
     if wavelimits[0]!=None:
-        ind  = np.where((eiglamb>wavelimits[0]) & (eiglamb<wavelimits[1]))
-        data = data [:,ind] 
+        ind  = np.where((eiglamb>wavelimits[0]) & (eiglamb<wavelimits[1]))[0]
+        data = data[:,ind] 
+        eiglamb = eiglamb[ind]
         
-    # multiply to get mean to order unity
-    spectra = data / np.mean(data)
+    # normalize
+    ind = np.where((eiglamb > 4000) & (eiglamb < 5000))[0]
+    spectra = data / np.mean(data[:,ind],axis=1)[:,None]
+
+    # subtract mean
+    if subtract_mean:
+        spectra -= np.mean(spectra,axis=0)[None,:]
 
     # adjust noise
     noise_level *= np.mean(spectra)

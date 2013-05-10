@@ -2,33 +2,31 @@ import numpy as np
 import matplotlib.pyplot as pl
 
 from empca import *
-from rotate_factor import varimax
+from rotate_factor import ortho_rotation
 
 class FAModel(object):
     """
     Factor Analysis deconvolution, using online learning.
     """
     def __init__(self,data,obsvar,latent_dim,
-                 max_iter=100000,check_factor=1,
-                 Nosc=5):
+                 max_iter=100000,compute_total_nll=True,
+                 learning_init_relsizes=[0.01,0.01,0.01],
+                 Ninit_est=10,check_rate=0.1,Neff=10,
+                 decay_t0_factor=1.,decay_pow=0.5):
         """
 
         """
         assert data.shape==obsvar.shape, 'Data and obs. ' + \
             'variance have different shapes'
-        if check_factor<1: 
-            print 'Warning: checking for convergence ' + \
-                'before seeing all the data.'
 
         self.N = data.shape[0]
         self.D = data.shape[1]
         self.M = latent_dim
-        self.jitter = np.zeros(self.D) 
-
-        # constant learning rates... fix soon.
-        self.mean_rate = 1.e-8 # ok for now...
-        self.jitter_rate = 1.e-8 # slams to zero
-        self.lambda_rate = 1.e-3 # no clue
+        self.avg_factor = np.exp(-1./Neff)
+        self.jitter = np.zeros(self.D)
+        self.decay_t0 = decay_t0_factor * self.N
+        self.decay_pow = decay_pow
+        self.running_nll = np.ones(check_rate*max_iter) * -np.Inf
 
         # Suffling the data
         ind = np.random.permutation(self.N)
@@ -39,8 +37,10 @@ class FAModel(object):
         self.initial_mean   = self.mean.copy()
         self.initial_jitter = self.jitter.copy()
         self.initial_lambda = self.lam.copy()
-        self.initial_nll    = self.total_negative_log_likelihood()
-        self.run_inference(max_iter,check_factor,Nosc)
+        if compute_total_nll:
+            self.initial_nll = self.total_negative_log_likelihood()
+        self.calc_init_rates(Ninit_est,learning_init_relsizes)
+        self.run_inference(max_iter,check_rate)
 
     def initialize(self):
 
@@ -56,8 +56,41 @@ class FAModel(object):
             self.lam = np.zeros(1)
         else:
             empca = EMPCA(self.data.T,self.M)
-            R = varimax(empca.lam)
+            R = ortho_rotation(empca.lam,method='varimax')
             self.lam = np.dot(empca.lam,R)
+
+    def run_inference(self,max_iter,check_rate):
+
+        for ii in range(max_iter):
+
+            # shuffle
+            if (ii%self.N)==0:
+                ind = np.random.permutation(self.N)
+                self.data = self.data[ind,:]
+                self.obsvar = self.obsvar[ind,:]
+
+            # specify datum
+            i = np.mod(ii,self.data.shape[0])            
+            self.datum = self.data[i,:]
+            self.variance = self.obsvar[i,:]
+
+            # Neg. log likelihood
+            self.invert_cov()
+            if (ii%(self.N*check_rate))==0:
+                self.estimate_nll(ii)
+                # convergence test...
+
+            # not converged, make a step
+            self.calc_rates(ii)
+            self.make_gradient_step()
+                
+    def estimate_nll(self,i):
+        est_nll = self.single_negative_log_likelihood()
+        if i==0:
+            self.running_nll[i] = est_nll
+        else:
+            self.running_nll[i] = self.running_nll[i-1] * (1.-self.avg_factor) + \
+                self.avg_factor * est_nll
             
     def invert_cov(self):
         """
@@ -81,64 +114,52 @@ class FAModel(object):
                 # fix to lemma-like version
                 self.inv_cov = np.linalg.inv(np.dot(lam,lamT))
 
-    def run_inference(self,max_iter,check_factor,Nosc):
-
-        check_iter = np.round(check_factor * self.N)
-
-        count = 0
-        nll_best = np.Inf
-        nll = np.Inf
-        for ii in range(max_iter):
-
-            if (ii%check_iter)==0: 
-                nll_new = self.total_negative_log_likelihood()
-                print 'Iteration %d has neg. log likelhood %g' % (ii,nll_new)
-                dlt_nll = nll - nll_new
-                if nll_new<nll_best:
-                    lam = self.lam
-                    jitter = self.jitter
-                    mean = self.mean
-                    nll_best = nll_new
-                if (dlt_nll<0.): 
-                    count += 1
-                    if count==Nosc:
-                        self.mean = mean
-                        self.lam = lam
-                        self.jitter = jitter
-                        self.nll = nll_best
-                        break
-                nll = nll_new
-            if (ii%self.N)==0:
-                ind = np.random.permutation(self.N)
-                self.data = self.data[ind,:]
-                self.obsvar = self.obsvar[ind,:]
-
-            i = np.mod(ii,self.data.shape[0])            
-            self.datum = self.data[i,:]
-            self.variance = self.obsvar[i,:]
-
-            self.invert_cov()
-            self.make_gradient_step()
 
     def make_gradient_step(self):
-        
+
         self.mean -= self.mean_rate * self.mean_gradients()
         self.jitter -= self.jitter_rate * self.jitter_gradients()
         self.lam -= self.lambda_rate * self.lambda_gradients()
 
         ind = (self.jitter < 0.0)
         self.jitter[ind] = 0.0
+
+    def calc_rates(self,t):
+
+        t0 = self.decay_t0 * self.N
+        p  = self.decay_pow
+
+        self.mean_rate *= (t0 / (t0+t)) ** p
+        self.jitter_rate *= (t0 / (t0+t)) ** p
+        self.lambda_rate *= (t0 / (t0+t)) ** p
+
+    def calc_init_rates(self,Ninit_est,learning_init_relsizes):
+
+        self.mean_rate = np.Inf
+        self.jitter_rate = np.Inf
+        self.lambda_rate = np.Inf
+
+        mf = learning_init_relsizes[0]
+        jf = learning_init_relsizes[1]
+        lf = learning_init_relsizes[2]
+
+        ind = np.random.permutation(self.N)
+        for i in range(Ninit_est):
+            self.datum = self.data[ind[i],:]
+            self.variance = self.obsvar[ind[i],:]
+            self.invert_cov()
+
+            self.mean_rate = np.minimum(self.mean_rate,
+                                        np.min(mf/np.abs(self.mean_gradients())))
+            self.jitter_rate = np.minimum(self.jitter_rate,
+                                        np.min(jf/np.abs(self.jitter_gradients())))
+            self.lambda_rate = np.minimum(self.mean_rate,
+                                        np.min(lf/np.abs(self.lambda_gradients())))
         
     def mean_gradients(self):
-        """
-        Numerical check ok.
-        """
         return -2. * np.dot((self.datum - self.mean),self.inv_cov)
         
     def jitter_gradients(self):
-        """
-        Numerical check ok.
-        """
         pt1 = np.dot(self.inv_cov.T,(self.datum - self.mean).T)
         pt2 = np.dot((self.datum - self.mean),self.inv_cov)
         return self.D * np.diag(self.inv_cov) - pt1 * pt2
@@ -165,8 +186,7 @@ class FAModel(object):
         return totnll
         
     def single_negative_log_likelihood(self):
-        cov = self.make_cov()
-        sgn, logdet = np.linalg.slogdet(cov)
+        sgn, logdet = self.single_slogdet_cov()
         assert sgn>0
         pt1 = self.D * logdet
         xmm = self.datum - self.mean
@@ -241,3 +261,47 @@ class FAModel(object):
 
 
 
+"""
+
+    def run_inference(self,max_iter,check_factor,Nosc):
+
+        check_iter = np.round(check_factor * self.N)
+
+        count = 0
+        nll_best = np.Inf
+        nll = np.Inf
+        for ii in range(max_iter):
+
+            if (ii%check_iter)==0:
+                if ii==0:
+                    nll_new = self.initial_nll
+                else:
+                    nll_new = self.total_negative_log_likelihood()
+                print 'Iteration %d has neg. log likelhood %g' % (ii,nll_new)
+                dlt_nll = nll - nll_new
+                if nll_new<nll_best:
+                    lam = self.lam
+                    jitter = self.jitter
+                    mean = self.mean
+                    nll_best = nll_new
+                if (dlt_nll<0.): 
+                    count += 1
+                    if count==Nosc:
+                        self.mean = mean
+                        self.lam = lam
+                        self.jitter = jitter
+                        self.nll = nll_best
+                        break
+                nll = nll_new
+            if (ii%self.N)==0:
+                ind = np.random.permutation(self.N)
+                self.data = self.data[ind,:]
+                self.obsvar = self.obsvar[ind,:]
+
+            i = np.mod(ii,self.data.shape[0])            
+            self.datum = self.data[i,:]
+            self.variance = self.obsvar[i,:]
+
+            self.invert_cov()
+            self.make_gradient_step()
+"""
