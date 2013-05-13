@@ -79,6 +79,7 @@ class FAModel(object):
             self.invert_cov()
             if (ii%check_rate)==0:
                 j = self.estimate_nll(j)
+                if (j%10)==0: print ii,j,self.running_nll[j]
                 # convergence test...
 
             # not converged, make a step
@@ -90,8 +91,8 @@ class FAModel(object):
         if j==0:
             self.running_nll[j] = est_nll
         else:
-            self.running_nll[j] = self.running_nll[j-1] * (1.-self.avg_factor) + \
-                self.avg_factor * est_nll
+            self.running_nll[j] = self.running_nll[j-1] * self.avg_factor + \
+                (1. - self.avg_factor) * est_nll
         return j+1
         
     def invert_cov(self):
