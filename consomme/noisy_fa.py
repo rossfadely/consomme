@@ -11,7 +11,7 @@ class FAModel(object):
     def __init__(self,data,obsvar,latent_dim,
                  max_iter=100000,compute_total_nll=True,
                  learning_init_relsizes=[0.01,0.01,0.01],
-                 Ninit_est=10,check_rate=0.1,Neff=10,
+                 Ninit_est=10,check_rate=100,Neff=10,
                  decay_t0_factor=1.,decay_pow=0.5):
         """
 
@@ -26,7 +26,7 @@ class FAModel(object):
         self.jitter = np.zeros(self.D)
         self.decay_t0 = decay_t0_factor * self.N
         self.decay_pow = decay_pow
-        self.running_nll = np.ones(check_rate*max_iter) * -np.Inf
+        self.running_nll = np.ones(max_iter/check_rate) * -np.Inf
 
         # Suffling the data
         ind = np.random.permutation(self.N)
@@ -61,6 +61,7 @@ class FAModel(object):
 
     def run_inference(self,max_iter,check_rate):
 
+        j = 0
         for ii in range(max_iter):
 
             # shuffle
@@ -76,22 +77,23 @@ class FAModel(object):
 
             # Neg. log likelihood
             self.invert_cov()
-            if (ii%(self.N*check_rate))==0:
-                self.estimate_nll(ii)
+            if (ii%check_rate)==0:
+                j = self.estimate_nll(j)
                 # convergence test...
 
             # not converged, make a step
-            self.calc_rates(ii)
+            self.calc_rates(j)
             self.make_gradient_step()
                 
-    def estimate_nll(self,i):
+    def estimate_nll(self,j):
         est_nll = self.single_negative_log_likelihood()
-        if i==0:
-            self.running_nll[i] = est_nll
+        if j==0:
+            self.running_nll[j] = est_nll
         else:
-            self.running_nll[i] = self.running_nll[i-1] * (1.-self.avg_factor) + \
+            self.running_nll[j] = self.running_nll[j-1] * (1.-self.avg_factor) + \
                 self.avg_factor * est_nll
-            
+        return j+1
+        
     def invert_cov(self):
         """
         Make inverse covariance, using the inversion lemma.
