@@ -74,9 +74,9 @@ class FAModel(object):
             i = np.mod(ii,self.data.shape[0])            
             self.datum = self.data[i,:]
             self.variance = self.obsvar[i,:]
-
+            self.do_precalcs()
+            
             # Neg. log likelihood
-            self.invert_cov()
             if (ii%check_rate)==0:
                 j = self.estimate_nll(j)
                 if (j%10)==0: print ii,j,self.running_nll[j]
@@ -94,7 +94,15 @@ class FAModel(object):
             self.running_nll[j] = self.running_nll[j-1] * self.avg_factor + \
                 (1. - self.avg_factor) * est_nll
         return j+1
-        
+
+    def do_precalcs(self):
+        """
+        Calculate matrices used repeatedly below
+        """
+        self.invert_cov()
+        self.dmm = self.datum - self.mean
+        self.dmmi = np.dot(self.dmm,self.inv_cov)
+     
     def invert_cov(self):
         """
         Make inverse covariance, using the inversion lemma.
@@ -103,11 +111,10 @@ class FAModel(object):
             self.inv_cov = np.diag(1.0 / (self.jitter + self.variance))
         else:
             # repeated in lemma
-            lam = self.lam
             lamT = lam.T
             if np.sum(self.jitter+self.variance)!=0.0:
                 psiI = np.diag(1.0 / (self.jitter + self.variance))
-                psiIlam = np.dot(psiI,lam)
+                psiIlam = np.dot(psiI,self.lam)
 
                 # the lemma
                 bar = np.dot(lamT,psiI)
@@ -115,7 +122,7 @@ class FAModel(object):
                 self.inv_cov = psiI - np.dot(psiIlam,np.dot(foo,bar))
             else:
                 # fix to lemma-like version
-                self.inv_cov = np.linalg.inv(np.dot(lam,lamT))
+                self.inv_cov = np.linalg.inv(np.dot(self.lam,lamT))
 
 
     def make_gradient_step(self):
@@ -150,7 +157,7 @@ class FAModel(object):
         for i in range(Ninit_est):
             self.datum = self.data[ind[i],:]
             self.variance = self.obsvar[ind[i],:]
-            self.invert_cov()
+            self.do_precalcs()
 
             self.mean_rate = np.minimum(self.mean_rate,
                                         np.min(mf/np.abs(self.mean_gradients())))
@@ -160,20 +167,19 @@ class FAModel(object):
                                         np.min(lf/np.abs(self.lambda_gradients())))
         
     def mean_gradients(self):
-        return -2. * np.dot((self.datum - self.mean),self.inv_cov)
+        return -2. * self.dmmi
         
     def jitter_gradients(self):
-        pt1 = np.dot(self.inv_cov.T,(self.datum - self.mean).T)
-        pt2 = np.dot((self.datum - self.mean),self.inv_cov)
-        return self.D * np.diag(self.inv_cov) - pt1 * pt2
+        pt = np.dot(self.inv_cov.T,self.dmm.T)
+        return self.D * np.diag(self.inv_cov) - pt * self.dmmi
 
     def lambda_gradients(self):
         pt1 = np.dot(self.inv_cov,self.lam) # d by m
         pt2 = np.zeros(self.M)
         for m in range(self.M):
             tmp = np.dot(self.inv_cov,self.lam[:,m])
-            pt2[m] = np.dot((self.datum - self.mean),tmp) # scalar
-        v = (self.datum - self.mean)[None,:] * pt2[:,None]
+            pt2[m] = np.dot((self.dmm,tmp) # scalar
+        v = self.dmm[None,:] * pt2[:,None]
         pt2 = np.zeros((self.D,self.M))
         for m in range(self.M):
             pt2[:,m] = np.dot(self.inv_cov,v[m,:])
@@ -184,7 +190,7 @@ class FAModel(object):
         for i in range(self.N):
             self.datum = self.data[i,:]
             self.variance = self.obsvar[i,:]
-            self.invert_cov()
+            self.do_precalcs()
             totnll += self.single_negative_log_likelihood()
         return totnll
         
@@ -192,8 +198,7 @@ class FAModel(object):
         sgn, logdet = self.single_slogdet_cov()
         assert sgn>0
         pt1 = self.D * logdet
-        xmm = self.datum - self.mean
-        pt2 = np.dot(xmm,np.dot(self.inv_cov,xmm.T))
+        pt2 = np.dot(self.dmm,np.dot(self.inv_cov,self.dmm.T))
         return (pt1 + pt2)
 
     def make_cov(self):

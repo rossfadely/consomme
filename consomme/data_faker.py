@@ -3,38 +3,64 @@ import numpy as np
 import matplotlib.pyplot as pl
 
 
-def create_spectra(Nspec,sed1,sed2):
+def default_fake(N,noise_level=0.05,Ngauss=3,seed=None,
+                wavelimits=(None,None),subtract_mean=False):
     """
-    Return linear combinations of two base spectra
+    Taking some eigenspectra from SDSS/Yip '04, constructing a toy.
+    Returned spectra are zero mean.
     """
-    frac = np.random.rand(Nspec)
-    spec = sed1[None,:] * frac[:,None] + \
-    sed2[None,:] * (1. - frac[:,None])
-    return spec
+    Neig = 2
+    # load eigenspectra
+    v = [1,4]
+    for i in range(Neig):
+        d = np.loadtxt('../seds/galaxyKL_eigSpec_'+str(v[i])+'.dat')
+        if i==0:
+            eigspec = np.zeros((Neig,d.shape[0]))
+            eiglamb = d[:,0]
+        eigspec[i,:] = d[:,1] / np.sqrt(np.sum(d[:,1]**2.))
 
-def default_fake(N,noise_level=0.05,seed=None):
-    data = np.loadtxt('../seds/Ell1_A_0.sed')
-    lam1 = data[:,0]
-    sed1 = data[:,1]
+    aas = np.zeros((N,2))
+    a1s = np.random.rand(N) 
+    a2s = a1s * np.random.rand(N) 
+    aas[:,0] = a1s
+    aas[:,1] = a2s
+    aas /= np.sqrt(np.sum(aas**2.,axis=1))[:,None]
 
-    data = np.loadtxt('../seds/Ell7_A_0.sed')
-    lam2 = data[:,0]
-    sed2 = data[:,1]
+    # make the data
+    data = np.sum(aas[:,:,None] * eigspec[None,:,:],axis=1)
 
-    assert np.sum(lam1-lam2)==0.0, 'Same wavelength grid'
+    # smooth to make it less noisy
+    wl = 21
+    w = np.ones(wl,'d')
+    for i in range(N):
+        data[i,(wl-1)/2:-(wl-1)/2] = np.convolve(w/w.sum(),data[i,:],mode='valid')
 
-    if seed!=None:
-        np.random.seed(seed)
+    # trim wavelength range
+    if wavelimits[0]!=None:
+        ind  = np.where((eiglamb>wavelimits[0]) & (eiglamb<wavelimits[1]))[0]
+        data = data[:,ind] 
+        eiglamb = eiglamb[ind]
+        
+    # normalize
+    ind = np.where((eiglamb > 4000) & (eiglamb < 5000))[0]
+    spectra = data / np.mean(data[:,ind],axis=1)[:,None]
 
-    spectra = create_spectra(N,sed1,sed2) * 500.
+    # subtract mean
+    if subtract_mean:
+        spectra -= np.mean(spectra,axis=0)[None,:]
+
+    # adjust noise
     noise_level *= np.mean(spectra)
+
+    # noise, jitter
     noise = noise_level * np.random.randn(spectra.shape[0],
                                           spectra.shape[1])
     jitter = noise_level * np.random.randn(spectra.shape[0],
                                           spectra.shape[1])
-    return lam1,spectra,spectra+noise+jitter,noise_level
+    
+    return eiglamb,spectra,spectra+noise+jitter,noise_level
 
-def richer_fake(N,Neig,noise_level=0.05,Ngauss=3,seed=None,
+def richer_fake(N,Neig,noise_level=0.05,window=21,seed=None,
                 wavelimits=(None,None),subtract_mean=False):
     """
     Taking some eigenspectra from SDSS/Yip '04, constructing a toy.
@@ -71,10 +97,9 @@ def richer_fake(N,Neig,noise_level=0.05,Ngauss=3,seed=None,
     data = np.sum(aas[:,:,None] * eigspec[None,:,:],axis=1)
 
     # smooth to make it less noisy
-    wl = 21
-    w = np.ones(wl,'d')
+    w = np.ones(window,'d')
     for i in range(N):
-        data[i,(wl-1)/2:-(wl-1)/2] = np.convolve(w/w.sum(),data[i,:],mode='valid')
+        data[i,(window-1)/2:-(window-1)/2] = np.convolve(w/w.sum(),data[i,:],mode='valid')
 
     # trim wavelength range
     if wavelimits[0]!=None:
