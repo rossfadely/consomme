@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as pl
+from time import time
 
 from empca import *
 from rotate_factor import ortho_rotation
@@ -9,7 +10,7 @@ class FAModel(object):
     Factor Analysis deconvolution, using online learning.
     """
     def __init__(self,data,obsvar,latent_dim,
-                 max_iter=100000,compute_total_nll=True,
+                 max_iter=100000,compute_total_nll=False,
                  learning_init_relsizes=[0.01,0.01,0.01],
                  Ninit_est=10,check_rate=100,Neff=10,
                  decay_t0_factor=1.,decay_pow=0.5):
@@ -22,11 +23,14 @@ class FAModel(object):
         self.N = data.shape[0]
         self.D = data.shape[1]
         self.M = latent_dim
+        self.psiI = np.zeros((self.D,self.D))
+        self.eyeM = np.eye(self.M)
         self.avg_factor = np.exp(-1./Neff)
         self.jitter = np.zeros(self.D)
         self.decay_t0 = decay_t0_factor * self.N
         self.decay_pow = decay_pow
         self.running_nll = np.ones(max_iter/check_rate) * -np.Inf
+        self.psi_diag_inds = np.diag_indices_from(self.psiI)
 
         # Suffling the data
         ind = np.random.permutation(self.N)
@@ -74,8 +78,10 @@ class FAModel(object):
             i = np.mod(ii,self.data.shape[0])            
             self.datum = self.data[i,:]
             self.variance = self.obsvar[i,:]
+            t = time()
             self.do_precalcs()
-            
+            print time()-t
+
             # Neg. log likelihood
             if (ii%check_rate)==0:
                 j = self.estimate_nll(j)
@@ -83,9 +89,16 @@ class FAModel(object):
                 # convergence test...
 
             # not converged, make a step
+            t = time()
             self.calc_rates(j)
+            print time()-t
+            t = time()
             self.make_gradient_step()
-                
+            print time()-t
+            print ii
+            if ii==1:
+                assert 0
+     
     def estimate_nll(self,j):
         est_nll = self.single_negative_log_likelihood()
         if j==0:
@@ -99,6 +112,7 @@ class FAModel(object):
         """
         Calculate matrices used repeatedly below
         """
+        self.psid = self.jitter + self.variance
         self.invert_cov()
         self.dmm = self.datum - self.mean
         self.dmmi = np.dot(self.dmm,self.inv_cov)
@@ -108,23 +122,29 @@ class FAModel(object):
         Make inverse covariance, using the inversion lemma.
         """
         if self.M==0:
-            self.inv_cov = np.diag(1.0 / (self.jitter + self.variance))
+            self.inv_cov = np.diag(1.0 / self.psid)
         else:
-            # repeated in lemma
-            lamT = lam.T
-            if np.sum(self.jitter+self.variance)!=0.0:
-                psiI = np.diag(1.0 / (self.jitter + self.variance))
-                psiIlam = np.dot(psiI,self.lam)
+            if np.sum(self.psid)!=0.0:
+                psiI = np.diag(1.0 / self.psid)
+                psiIlam = np.zeros((self.D,self.M))
+                psiIlam = self.crazy_dot(psiI,self.lam,psiIlam)
 
-                # the lemma
-                bar = np.dot(lamT,psiI)
-                foo = np.linalg.inv(np.eye(self.M) + np.dot(lamT,psiIlam))
-                self.inv_cov = psiI - np.dot(psiIlam,np.dot(foo,bar))
+                # the lemma, last step is slowest
+                foo = np.linalg.inv(self.eyeM + np.dot(self.lam.T,psiIlam))
+                self.inv_cov = psiI
+                self.inv_cov -= np.dot(psiIlam,np.dot(foo,psiIlam.T))
             else:
                 # fix to lemma-like version
-                self.inv_cov = np.linalg.inv(np.dot(self.lam,lamT))
+                self.inv_cov = np.linalg.inv(np.dot(self.lam,self.lam.T))
 
-
+    def crazy_dot(self,a,b,result):
+        """
+        Somehow this is faster...
+        """
+        for m in range(self.M):
+            result[:,m] = np.dot(a,b[:,m])
+        return result
+            
     def make_gradient_step(self):
 
         self.mean -= self.mean_rate * self.mean_gradients()
@@ -170,19 +190,15 @@ class FAModel(object):
         return -2. * self.dmmi
         
     def jitter_gradients(self):
-        pt = np.dot(self.inv_cov.T,self.dmm.T)
-        return self.D * np.diag(self.inv_cov) - pt * self.dmmi
+        return self.D * self.inv_cov[self.psi_diag_inds] - self.dmmi * self.dmmi
 
     def lambda_gradients(self):
-        pt1 = np.dot(self.inv_cov,self.lam) # d by m
-        pt2 = np.zeros(self.M)
+        pt1 = np.dot(self.inv_cov,self.lam) 
+        pt2 = np.dot(self.dmm,pt1)
+        v = self.dmm[:,None] * pt2[None,:]
+        pt2 = np.zeros((self.D,self.M)) # crazy, this is faster.
         for m in range(self.M):
-            tmp = np.dot(self.inv_cov,self.lam[:,m])
-            pt2[m] = np.dot((self.dmm,tmp) # scalar
-        v = self.dmm[None,:] * pt2[:,None]
-        pt2 = np.zeros((self.D,self.M))
-        for m in range(self.M):
-            pt2[:,m] = np.dot(self.inv_cov,v[m,:])
+            pt2[:,m] = np.dot(self.inv_cov,v[:,m])
         return 2. * (self.D * pt1 - pt2)
     
     def total_negative_log_likelihood(self):
@@ -202,7 +218,7 @@ class FAModel(object):
         return (pt1 + pt2)
 
     def make_cov(self):
-        psi = np.diag(self.variance+self.jitter)
+        psi = np.diag(self.psid)
         lamlamT = np.dot(self.lam,self.lam.T)
         return psi+lamlamT
 
@@ -211,9 +227,8 @@ class FAModel(object):
         Return sign and value of log det of covariance,
         using the matrix determinant lemma
         """
-        psid = self.variance+self.jitter
-        pt1 = np.eye(self.M) + np.dot(self.lam.T,self.lam / psid[:,None])
-        det = np.linalg.det(pt1) * np.prod(psid)
+        pt1 = self.eyeM + np.dot(self.lam.T,self.lam / self.psid[:,None])
+        det = np.linalg.det(pt1) * np.prod(self.psid)
         sgn = 1
         if det<0:
             sgn = -1
@@ -270,46 +285,12 @@ class FAModel(object):
 
 
 """
+in lambda gradients -
+        pt2 = np.zeros(self.M)
+        for m in range(self.M):
+            tmp = np.dot(self.inv_cov,self.lam[:,m])
+            pt2[m] = np.dot(self.dmm,tmp) # scalar
 
-    def run_inference(self,max_iter,check_factor,Nosc):
+        pt2 = np.dot(self.inv_cov,v)
 
-        check_iter = np.round(check_factor * self.N)
-
-        count = 0
-        nll_best = np.Inf
-        nll = np.Inf
-        for ii in range(max_iter):
-
-            if (ii%check_iter)==0:
-                if ii==0:
-                    nll_new = self.initial_nll
-                else:
-                    nll_new = self.total_negative_log_likelihood()
-                print 'Iteration %d has neg. log likelhood %g' % (ii,nll_new)
-                dlt_nll = nll - nll_new
-                if nll_new<nll_best:
-                    lam = self.lam
-                    jitter = self.jitter
-                    mean = self.mean
-                    nll_best = nll_new
-                if (dlt_nll<0.): 
-                    count += 1
-                    if count==Nosc:
-                        self.mean = mean
-                        self.lam = lam
-                        self.jitter = jitter
-                        self.nll = nll_best
-                        break
-                nll = nll_new
-            if (ii%self.N)==0:
-                ind = np.random.permutation(self.N)
-                self.data = self.data[ind,:]
-                self.obsvar = self.obsvar[ind,:]
-
-            i = np.mod(ii,self.data.shape[0])            
-            self.datum = self.data[i,:]
-            self.variance = self.obsvar[i,:]
-
-            self.invert_cov()
-            self.make_gradient_step()
 """
