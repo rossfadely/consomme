@@ -1,6 +1,4 @@
 import numpy as np
-import matplotlib.pyplot as pl
-from time import time
 
 from empca import *
 from rotate_factor import ortho_rotation
@@ -17,8 +15,9 @@ class FAModel(object):
         """
 
         """
-        assert data.shape==obsvar.shape, 'Data and obs. ' + \
+        assert data.shape == obsvar.shape, 'Data and obs. ' + \
             'variance have different shapes'
+        assert max_iter >= check_rate, 'Max iter less than check rate'
 
         self.N = data.shape[0]
         self.D = data.shape[1]
@@ -29,7 +28,7 @@ class FAModel(object):
         self.jitter = np.zeros(self.D)
         self.decay_t0 = decay_t0_factor * self.N
         self.decay_pow = decay_pow
-        self.running_nll = np.ones(max_iter/check_rate) * -np.Inf
+        self.running_nll = np.zeros(max_iter/check_rate)
         self.psi_diag_inds = np.diag_indices_from(self.psiI)
 
         # Suffling the data
@@ -78,26 +77,17 @@ class FAModel(object):
             i = np.mod(ii,self.data.shape[0])            
             self.datum = self.data[i,:]
             self.variance = self.obsvar[i,:]
-            t = time()
             self.do_precalcs()
-            print time()-t
 
             # Neg. log likelihood
             if (ii%check_rate)==0:
                 j = self.estimate_nll(j)
-                if (j%10)==0: print ii,j,self.running_nll[j]
+                print ii,j,self.running_nll[j-1]
                 # convergence test...
 
             # not converged, make a step
-            t = time()
             self.calc_rates(j)
-            print time()-t
-            t = time()
             self.make_gradient_step()
-            print time()-t
-            print ii
-            if ii==1:
-                assert 0
      
     def estimate_nll(self,j):
         est_nll = self.single_negative_log_likelihood()
@@ -261,7 +251,7 @@ class FAModel(object):
             print '(Used lambda grad., ' + \
                 'Est. lamda grad) = %g %g' % (lgrad[D,M],estl)
 
-    def _check_one_gradient(self,kind,ind,eps = 1.0e-3):
+    def _check_one_gradient(self,kind,ind,eps = 1.0e-6):
 
         if kind=='mean':
             parm = self.mean
@@ -274,10 +264,10 @@ class FAModel(object):
         if h==0.0: h = eps
 
         parm[ind] += h
-        self.invert_cov()
+        self.do_precalcs()
         l1 = self.single_negative_log_likelihood()
         parm[ind] -= h
-        self.invert_cov()
+        self.do_precalcs()
         l2 = self.single_negative_log_likelihood()
 
         return (l1 - l2) / (h)
