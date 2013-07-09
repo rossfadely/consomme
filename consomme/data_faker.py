@@ -1,127 +1,116 @@
-
 import numpy as np
-import matplotlib.pyplot as pl
 
+def normalize_spectra(lamb, spectra, noise=None, wavelimits=(5500,6500)):
 
-def default_fake(N,noise_level=0.05,Ngauss=3,seed=None,
-                wavelimits=(None,None),subtract_mean=False):
+    # normalize
+    ind = np.where((lamb > wavelimits[0]) & (lamb < wavelimits[1]))[0]
+    factors = np.mean(spectra[:,ind],axis=1)
+    
+    level = factors.max()
+
+    spectra /= factors[:,None] / level
+    if noise is not None:
+        noise /= factors[:,None] / level
+
+    return spectra, noise
+
+def noiseless_fake(N, Neig, scale=64., window=21, seed=None,
+                   wavelimits=(None, None)):
     """
     Taking some eigenspectra from SDSS/Yip '04, constructing a toy.
-    Returned spectra are zero mean.
     """
-    Neig = 2
-    # load eigenspectra
-    v = [1,4]
-    for i in range(Neig):
-        d = np.loadtxt('../seds/galaxyKL_eigSpec_'+str(v[i])+'.dat')
-        if i==0:
-            eigspec = np.zeros((Neig,d.shape[0]))
-            eiglamb = d[:,0]
-        eigspec[i,:] = d[:,1] / np.sqrt(np.sum(d[:,1]**2.))
-
-    aas = np.zeros((N,2))
-    a1s = np.random.rand(N) 
-    a2s = a1s * np.random.rand(N) 
-    aas[:,0] = a1s
-    aas[:,1] = a2s
-    aas /= np.sqrt(np.sum(aas**2.,axis=1))[:,None]
-
-    # make the data
-    data = np.sum(aas[:,:,None] * eigspec[None,:,:],axis=1)
-
-    # smooth to make it less noisy
-    wl = 21
-    w = np.ones(wl,'d')
-    for i in range(N):
-        data[i,(wl-1)/2:-(wl-1)/2] = np.convolve(w/w.sum(),data[i,:],mode='valid')
-
-    # trim wavelength range
-    if wavelimits[0]!=None:
-        ind  = np.where((eiglamb>wavelimits[0]) & (eiglamb<wavelimits[1]))[0]
-        data = data[:,ind] 
-        eiglamb = eiglamb[ind]
-        
-    # normalize
-    ind = np.where((eiglamb > 4000) & (eiglamb < 5000))[0]
-    spectra = data / np.mean(data[:,ind],axis=1)[:,None]
-
-    # subtract mean
-    if subtract_mean:
-        spectra -= np.mean(spectra,axis=0)[None,:]
-
-    # adjust noise
-    noise_level *= np.mean(spectra)
-
-    # noise, jitter
-    noise = noise_level * np.random.randn(spectra.shape[0],
-                                          spectra.shape[1])
-    jitter = noise_level * np.random.randn(spectra.shape[0],
-                                          spectra.shape[1])
-    
-    return eiglamb,spectra,spectra+noise+jitter,noise_level
-
-def richer_fake(N,Neig,noise_level=0.05,window=21,seed=None,
-                wavelimits=(None,None),subtract_mean=False):
-    """
-    Taking some eigenspectra from SDSS/Yip '04, constructing a toy.
-    Returned spectra are zero mean.
-    """
+    # load mean spectrum
+    d = np.loadtxt('../seds/galaxyKL_meanSpec_regrid.dat')
+    lamb = d[:, 0]
+    mean = d[:, 1]
 
     # load eigenspectra
+    eigspec = np.random.randn(lamb.shape[0], lamb.shape[0])
     for i in range(Neig):
-        d = np.loadtxt('../seds/galaxyKL_eigSpec_'+str(i+1)+'.dat')
-        if i==0:
-            eigspec = np.zeros((Neig,d.shape[0]))
-            eiglamb = d[:,0]
-        eigspec[i,:] = d[:,1] / np.sqrt(np.sum(d[:,1]**2.))
+        d = np.loadtxt('../seds/galaxyKL_eigSpec_'+str(i + 1)+'.dat')
+        if i == 0:
+            eiglamb = d[:, 0]
+            ind = np.where((eiglamb >= lamb.min()) & 
+                           (eiglamb <= lamb.max()))[0]
+        eigspec[i, :] = d[ind, 1] / np.sqrt(np.sum(d[ind, 1]**2.))
 
-    # coefficients to give something like early types
-    a1s = np.random.rand(N) * 0.1 + 0.9
-    phi = np.random.rand(N) * 12.5 + 7.5
-    a2s = a1s * np.tan(phi*np.pi/180.)
-    tta = np.random.rand(N) * 6 + 86
-    a3s = np.cos(tta*np.pi/180.)
-    aas = np.zeros((N,Neig))
-    assert Neig>1
-    aas[:,0] = a1s
-    aas[:,1] = a2s
-    if Neig>2:
-        aas[:,2] = a3s
-        mag = np.max(np.sqrt(aas[:,2]**2.)) * 0.1
-        for i in range(Neig-3):
-            aas[:,i+3] = (np.random.rand(N) - 0.5) * 2 * mag
-        mag *= 0.1
-    aas /= np.sqrt(np.sum(aas**2.,axis=1))[:,None]
+    # made up crap to set eigvals
+    eval_list = np.array([0.9, 0.05, 0.03, 0.02]) * scale
+    eigvals = np.zeros_like(lamb)       
+    assert Neig <= eval_list.shape[0]
+    eigvals[:Neig] = eval_list[:Neig]
+
+    cov = np.dot(eigspec.T, np.dot(np.diag(eigvals), eigspec))
 
     # make the data
-    data = np.sum(aas[:,:,None] * eigspec[None,:,:],axis=1)
+    data = np.random.multivariate_normal(mean, cov, N)
 
     # smooth to make it less noisy
-    w = np.ones(window,'d')
-    for i in range(N):
-        data[i,(window-1)/2:-(window-1)/2] = np.convolve(w/w.sum(),data[i,:],mode='valid')
+    if window > 0:
+        w = np.ones(window, 'd')
+        for i in range(N):
+            data[i, (window - 1) / 2:-(window - 1) / 2] = \
+                np.convolve(w / w.sum(), data[i, :], mode='valid')
 
     # trim wavelength range
-    if wavelimits[0]!=None:
-        ind  = np.where((eiglamb>wavelimits[0]) & (eiglamb<wavelimits[1]))[0]
-        data = data[:,ind] 
-        eiglamb = eiglamb[ind]
+    if wavelimits[0] is not None:
+        ind  = np.where((lamb > wavelimits[0]) & 
+                        (lamb < wavelimits[1]))[0]
+        data = data[:, ind] 
+        lamb = lamb[ind]
         
-    # normalize
-    ind = np.where((eiglamb > 4000) & (eiglamb < 5000))[0]
-    spectra = data / np.mean(data[:,ind],axis=1)[:,None]
-
-    # subtract mean
-    if subtract_mean:
-        spectra -= np.mean(spectra,axis=0)[None,:]
-
-    # adjust noise
-    noise_level *= np.mean(spectra)
-
-    # noise, jitter
-    noise = noise_level * np.random.randn(spectra.shape[0],
-                                          spectra.shape[1])
-    jitter = noise_level * np.random.randn(spectra.shape[0],
-                                          spectra.shape[1])
+    # normalize spectra
+    spectra = normalize_spectra(lamb,data)[0]
     
-    return eiglamb,spectra,spectra+noise+jitter,noise_level
+    return lamb, spectra
+
+def add_noise(lam, spectra, n_range=(1, 2), uniform_across=True,
+              uniform_within=True):
+
+
+    # rough shape of typical SDSS gal flux/noise spec
+    pt1 = np.array([4000,2.]) 
+    pt2 = np.array([7000,23.])  
+    pt3 = np.array([9000,7.5])
+
+    if uniform_across:
+        scales = np.ones(spectra.shape[0]) * n_range[0]
+    else:
+        scales = np.random.rand(spectra.shape[0]) * n_range[0] + \
+            n_range[1] - n_range[0]
+        
+    # lines defining two halves of kink
+    m1s = scales * (pt2[1]-pt1[1])/(pt2[0]-pt1[0])
+    m2s = scales * (pt3[1]-pt2[1])/(pt3[0]-pt2[0])
+    b1s = scales * pt2[1] - m1s * pt2[0]
+    b2s = scales * pt3[1] - m2s * pt3[0]
+
+    # flux / noise ratios
+    ratios = np.zeros_like(spectra)
+    ratios = m1s[:,None] * lam[None,:] + b1s[:,None]
+    ind = np.where(lam < pt1[0])[0]
+    tmp = ratios[:,ind[-1]+1]
+    ratios[:,ind] = tmp[:,None]
+    ind = np.where(lam > pt2[0])[0]
+    tmp = lam[ind]
+    ratios[:,ind] = m2s[:,None] * tmp[None,:] + b2s[:,None]
+
+    if uniform_within:
+        mr = np.mean(ratios,axis=1)
+        ratios *= 0.0
+        ratios += mr[:,None]
+
+    noise = 1.0 / ratios
+    nm = noise.min()
+    noise /= nm
+    spectra /= nm
+
+    # normalize spectra
+    spectra, noise = normalize_spectra(lam,spectra,noise=noise)
+
+    noisy_spectra = spectra + \
+        np.random.randn(spectra.shape[0],spectra.shape[1]) * noise
+
+    return noisy_spectra, spectra, noise
+
+    

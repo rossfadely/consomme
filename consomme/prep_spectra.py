@@ -10,8 +10,8 @@ class SDSSSpecPrep(object):
     Prepare SDSS spectra for factorization.
     """
     def __init__(self,spectralist,dlt=5.e-5,
-                 ivar_factor=100,normalize=True,
-                 wavelimits=(5000,6000),ivar_cut=0.001):
+                 normalize=True,wavelimits=(5000,6000),
+                 ivar_factor=100,ivar_cut=0.001):
 
         self.load_data(spectralist)
         self.make_default_grid(dlt)
@@ -87,21 +87,30 @@ class SDSSSpecPrep(object):
 
 
             for i in range(self.N):
-                mask = interpolate_spectrum(interp,self.wave[i].astype('float64'),
+                mask = interpolate_spectrum(interp,
+                                            self.wave[i].astype('float64'),
                                             self.flux[i].astype('float64'),
                                             self.final_wave,
                                             self.final_flux[i,:])
-                mask = interpolate_spectrum(interp,self.wave[i].astype('float64'),
+                mask = interpolate_spectrum(interp,
+                                            self.wave[i].astype('float64'),
                                             self.ivar[i].astype('float64'),
                                             self.final_wave,
                                             self.final_ivar[i,:])
-                ind = mask==1.
+
+                # zero ivars for points outside interpolation range
+                ind = mask == 1.
+                self.final_ivar[i,ind] = 0.0
+                # zero ivars for places where interp goes negative
+                ind = self.final_ivar[i,:] < 0.0
                 self.final_ivar[i,ind] = 0.0
 
-        self.final_wave = self.final_wave[1:-1]
-        self.final_flux = self.final_flux[:,1:-1]
-        self.final_ivar = self.final_ivar[:,1:-1]
-        self.D -= 2
+        ind = np.where(np.sum(self.final_ivar,axis=0) != 0)[0]
+
+        self.final_wave = self.final_wave[ind]
+        self.final_flux = self.final_flux[:,ind]
+        self.final_ivar = self.final_ivar[:,ind]
+        self.D = self.final_wave.shape[0]
 
     def normalize(self,wavemin,wavemax):
         """

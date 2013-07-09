@@ -21,7 +21,7 @@ class HFAModel(object):
               doing vanilla FA!
     `latent_dim`: Integer dimensionality of the low-rank part of the
                   covariance matrices.
-    `maxfun`: Integer number of calls to the neg. log likelihood
+    `max_fun`: Integer number of calls to the neg. log likelihood
               function for fmin_l_bfgs_b. See http://bit.ly/18bCypv
     `factr`: Tolerance factor for optimization convergence.
              See http://bit.ly/18bCypv
@@ -37,7 +37,7 @@ class HFAModel(object):
     - Double check jitter gradients.
 
     """
-    def __init__(self, data, obsvar, latent_dim, maxfun=1e6, factr=1e7,
+    def __init__(self, data, obsvar, latent_dim, max_fun=1e6, factr=1e7,
                  jitter_model='one'):
 
         assert data.shape == obsvar.shape, 'Data and obs. ' + \
@@ -92,7 +92,7 @@ class HFAModel(object):
         else:
             self.jitter = np.zeros(self.D)
 
-    def run_inference(self, max_fun, eps, factr):
+    def run_inference(self, max_fun, factr):
         """
         Optimize the parameters using fmin_l_bfgs_b
         """
