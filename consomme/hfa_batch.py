@@ -1,6 +1,6 @@
 import numpy as np
 
-from mofa import *
+from sklearn.decomposition import FactorAnalysis
 from scipy.optimize import fmin_l_bfgs_b
 
 
@@ -80,9 +80,9 @@ class HFAModel(object):
         if self.M == 0:
             self.lam = np.zeros(1)
         else:
-            fa = Mofa(self.data, 1, self.M)
-            fa.run_em(tol=1.e-6)
-            self.lam = fa.lambdas[0, :, :]
+            fa = FactorAnalysis(n_components=self.M)
+            fa.fit(self.data)
+            self.lam = fa.components_.T
 
         # initialize jitter
         if self.jtype is None:
@@ -102,8 +102,6 @@ class HFAModel(object):
         # bounds
         b = self.make_bounds()
 
-        g = self.calc_gradients(p0)
-
         result = fmin_l_bfgs_b(self.call_nll, p0, self.calc_gradients,
                                bounds=b, factr=factr, maxfun=max_fun,
                                iprint=2)
@@ -114,6 +112,7 @@ class HFAModel(object):
         Make a negative log likelihood call for the model.
         """
         self.assign_parms(p)
+        self.grads = np.zeros_like(p)
         nll = self.total_negative_log_likelihood()
         return nll
 
@@ -121,18 +120,7 @@ class HFAModel(object):
         """
         Calculate gradients for fmin_l_bfgs_b
         """
-        self.assign_parms(p)
-        grads = np.zeros_like(p)
-        for i in range(self.N):
-            self.datum = self.data[i, :]
-            self.variance = self.obsvar[i, :]
-            self.do_precalcs()
-            grads[:self.D] += self.mean_gradients()
-            grads[self.D:self.D * (self.M + 1)] += \
-                self.lambda_gradients().ravel()
-            if self.jtype is not None:
-                grads[self.D * (self.M + 1):] += self.jitter_gradients()
-        return grads / self.N
+        return self.grads
 
     def assign_parms(self, p):
         """
@@ -255,6 +243,14 @@ class HFAModel(object):
             self.variance = self.obsvar[i, :]
             self.do_precalcs()
             totnll += self.single_negative_log_likelihood()
+            self.grads[:self.D] += self.mean_gradients()
+            self.grads[self.D:self.D * (self.M + 1)] += \
+                self.lambda_gradients().ravel()
+            if self.jtype is not None:
+                self.grads[self.D * (self.M + 1):] += self.jitter_gradients()
+
+        self.grads /= self.N
+
         return totnll
 
     def single_negative_log_likelihood(self):
@@ -268,15 +264,10 @@ class HFAModel(object):
 
     def single_slogdet_cov(self):
         """
-        Return sign and value of log det of covariance,
-        using the matrix determinant lemma
+        Return sign and value of log det of covariance.
         """
-        pt1 = self.eyeM + np.dot(self.lam.T, self.lam / self.psid[:, None])
-        det = np.linalg.det(pt1) * np.prod(self.psid)
-        sgn = 1
-        if det < 0:
-            sgn = -1
-        return sgn, np.log(np.abs(det))
+        lamlamT = np.dot(self.lam,self.lam.T)
+        return np.linalg.slogdet(lamlamT + np.diag(self.psid))
 
     def _check_one_gradient(self, kind, ind, eps=1.0e-6):
         """
