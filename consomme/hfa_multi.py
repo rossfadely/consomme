@@ -1,4 +1,5 @@
 import numpy as np
+import multiprocessing
 
 from sklearn.decomposition import FactorAnalysis
 from scipy.optimize import fmin_l_bfgs_b
@@ -37,8 +38,9 @@ class HFAModel(object):
     - Double check jitter gradients.
 
     """
-    def __init__(self, data, obsvar, latent_dim, max_fun=1e6, factr=1e7,
-                 jitter_model='one'):
+    def __init__(self, data, obsvar, latent_dim, single_nll_and_gradients,
+                 max_fun=1e6, factr=1e7,
+                 jitter_model='one', threads=1):
 
         assert data.shape == obsvar.shape, 'Data and obs. ' + \
             'variance have different shapes'
@@ -58,12 +60,16 @@ class HFAModel(object):
         self.jtype = jitter_model
         self.obsvar = obsvar
         self.psi_diag_inds = np.diag_indices_from(self.psiI)
+        self.single_nll_and_gradients = single_nll_and_gradients
 
-        self.initialize()
-        self.initial_mean = self.mean.copy()
-        self.initial_jitter = self.jitter.copy()
-        self.initial_lambda = self.lam.copy()
-        self.run_inference(max_fun, factr)
+        if threads > 1:
+            self.pool = multiprocessing.Pool(threads)
+            self.map = self.pool.map
+        else:
+            self.map = map
+        
+        #self.initialize()
+        #self.run_inference(max_fun, factr)
 
     def initialize(self):
         """
@@ -92,7 +98,12 @@ class HFAModel(object):
         else:
             self.jitter = np.zeros(self.D)
 
-    def run_inference(self, max_fun, factr):
+        # save a copy
+        self.initial_mean = self.mean.copy()
+        self.initial_jitter = self.jitter.copy()
+        self.initial_lambda = self.lam.copy()
+
+    def run_inference(self, max_fun=1e6, factr=1e7):
         """
         Optimize the parameters using fmin_l_bfgs_b
         """
@@ -166,129 +177,31 @@ class HFAModel(object):
 
         return bounds
 
-    def do_precalcs(self):
-        """
-        Calculate matrices used repeatedly below
-        """
-        self.psid = self.variance
-        if self.jtype is not None:
-            self.psid += self.jitter
-        self.invert_cov()
-        self.dmm = self.datum - self.mean
-        self.dmmi = np.dot(self.dmm, self.inv_cov)
-
-    def invert_cov(self):
-        """
-        Make inverse covariance, using the inversion lemma.
-        """
-        if self.M == 0:
-            self.inv_cov = np.diag(1.0 / self.psid)
-        else:
-            if np.sum(self.psid) != 0.0:
-                psiI = np.diag(1.0 / self.psid)
-                psiIlam = np.zeros((self.D, self.M))
-                # double check this is actually faster, generally.
-                psiIlam = self.crazy_dot(psiI, self.lam, psiIlam)
-
-                # the lemma, last step is slowest
-                foo = np.linalg.inv(self.eyeM + np.dot(self.lam.T, psiIlam))
-                self.inv_cov = psiI
-                self.inv_cov -= np.dot(psiIlam, np.dot(foo, psiIlam.T))
-            else:
-                # fix to lemma-like version
-                self.inv_cov = np.linalg.inv(np.dot(self.lam, self.lam.T))
-
-    def crazy_dot(self, a, b, result):
-        """
-        Somehow this is faster...
-        """
-        for m in range(self.M):
-            result[:, m] = np.dot(a, b[:, m])
-        return result
-
-    def mean_gradients(self):
-        """
-        Return gradient of mean.
-        """
-        return -2. * self.dmmi
-
-    def lambda_gradients(self):
-        """
-        Return gradients for factor loadings.
-        """
-        pt1 = np.dot(self.inv_cov, self.lam)
-        pt2 = np.dot(self.dmm, pt1)
-        v = self.dmm[:, None] * pt2[None, :]
-        pt2 = np.zeros((self.D, self.M))  # crazy, this is faster.
-        for m in range(self.M):
-            pt2[:, m] = np.dot(self.inv_cov, v[:, m])
-        return 2. * (pt1 - pt2)
-
-    def jitter_gradients(self):
-        """
-        Return jitter gradient - Ross double check.
-        """
-        jgrad = self.inv_cov[self.psi_diag_inds] - self.dmmi * self.dmmi
-        if self.jtype is 'one':
-            jgrad = np.mean(jgrad)
-        return jgrad
-
     def total_negative_log_likelihood(self):
         """
         Return total negative log likelihood of current model
         """
-        totnll = 0.0
+        lamT = self.lam.T
+        arglists = []
         for i in range(self.N):
-            self.datum = self.data[i, :]
-            self.variance = self.obsvar[i, :]
-            self.do_precalcs()
-            totnll += self.single_negative_log_likelihood()
-            self.grads[:self.D] += self.mean_gradients()
-            self.grads[self.D:self.D * (self.M + 1)] += \
-                self.lambda_gradients().ravel()
-            if self.jtype is not None:
-                self.grads[self.D * (self.M + 1):] += self.jitter_gradients()
+            args = [self.data[i, :], self.obsvar[i, :],
+                    self.mean, self.lam, lamT,
+                    self.jtype, self.M]
+            arglists.append(args)
 
+        results = list(self.map(self.single_nll_and_gradients,
+                                [args for args in arglists]))
+
+        totnll = 0.
+        for i in range(self.N):
+            totnll += results[i][0]
+            self.grads[:self.D] += results[i][1]
+            self.grads[self.D:self.D * (self.M + 1)] += results[i][2].ravel()
+            if self.jtype is not None:
+                self.grads[self.D * (self.M + 1):] +=  results[i][3]
+
+        # straight average of gradients
+        # maybe change to inverse variance weighted?
         self.grads /= self.N
 
         return totnll
-
-    def single_negative_log_likelihood(self):
-        """
-        Return the NLL of a single sample.
-        """
-        sgn, logdet = self.single_slogdet_cov()
-        assert sgn > 0
-        pt2 = np.dot(self.dmm, np.dot(self.inv_cov, self.dmm.T))
-        return logdet + pt2
-
-    def single_slogdet_cov(self):
-        """
-        Return sign and value of log det of covariance.
-        """
-        lamlamT = np.dot(self.lam,self.lam.T)
-        return np.linalg.slogdet(lamlamT + np.diag(self.psid))
-
-    def _check_one_gradient(self, kind, ind, eps=1.0e-6):
-        """
-        Gradient checking foo.
-        """
-        if kind == 'mean':
-            parm = self.mean
-        elif kind == 'jitter':
-            parm = self.jitter
-        else:
-            parm = self.lam
-
-        h = np.abs(parm[ind]) * eps
-        if h == 0.0:
-            h = eps
-
-        parm[ind] += h
-        self.do_precalcs()
-        l1 = self.single_negative_log_likelihood()
-        parm[ind] -= h
-        self.do_precalcs()
-        l2 = self.single_negative_log_likelihood()
-
-        return (l1 - l2) / (h)
