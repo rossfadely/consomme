@@ -1,28 +1,28 @@
 \documentclass[12pt,preprint]{aastex}
+\usepackage{amssymb,amsmath,mathrsfs,hyperref,datetime}
 
 \newcommand{\equationname}{equation}
 \newcommand{\equationnames}{\equationname s}
 \newcommand{\given}{\,|\,}
 \newcommand{\setof}[1]{\left\{{#1}\right\}}
 \newcommand{\transpose}[1]{{#1}^{\!{\mathsf{T}}}}
+\newcommand{\N}{\mathcal{N}}
+\newcommand{\mbf}[1]{\boldsymbol{#1}}
+\newcommand{\w}{\mbf{w}}
+\newcommand{\X}{\mbf{X}}
+\newcommand{\Y}{\mbf{Y}}
+\newcommand{\I}{\mbf{I}}
+\newcommand{\eps}{\mbf{\epsilon}}
+\newcommand{\ps}{\mbf{\Psi}}
+\newcommand{\m}{\mbf{\mu}}
+\newcommand{\lam}{\mbf{\Lambda}}
+\newcommand{\sig}{\mbf{\Sigma}}
+\newcommand{\var}{\mbf{\sigma}^2}
 
-% Stolen from DFM's emcee paper - trim later
-\newcommand{\project}[1]{{\sffamily #1}}
-\newcommand{\Python}{\project{Python}}
-\newcommand{\numpy}{\project{numpy}}
-\newcommand{\Ubuntu}{\project{Ubuntu}}
-\newcommand{\github}{\project{GitHub}}
-\newcommand{\pip}{\project{pip}}
-\newcommand{\acor}{\project{acor}}
-\newcommand{\sdss}{\project{SDSS}}
-\newcommand{\hfaplain}{HFA}
-\newcommand{\hfa}{\project{\hfaplain}}
-\newcommand{\paper}{document}
-\newcommand{\license}{GNU General Public License v2}
 
 \begin{document}
 
-\title{Heteroskedastic Factor Analysis}
+\title{Optimal modeling of sample mean and variance using Heteroskedastic Factor Analysis}
 
 \newcommand{\nyu}{2}
 \newcommand{\mpia}{3}
@@ -38,24 +38,26 @@
 
 \begin{abstract}
 
-    Principal Components Analysis (PCA) is a widely used method in 
-    Astronomy (and other disciplines) to construct a low-dimensional 
-    representation of the data covariance.  A major problem with PCA 
-    is that it fails to account for differences in measurement 
-    uncertainties, both within and across observations.  As a 
-    consequence, the performance of PCA is severely compromised when 
-    the numbers of observations are small, with noise properties that 
-    are non-uniform and/or large.  We present a method for generalized 
-    dimensionality reduction under the presence of heterogeneous, 
-    noisy observations.  The method, dubbed \project{Heteroskedastic 
-    Factor Analysis} or \hfa\ , represents a modified version of 
-    Factor Analysis which utilizes the observed uncertainties and can 
-    naturally account for missing or bad data.  We demonstrate the 
-    relative performances of standard PCA, 
-    Expectation-Maximization PCA (EM-PCA), Factor Analysis, and \hfa\
-    on toy data, as well as (realistically modified) spectra from the 
-    Sloan Digital Sky Survey (\sdss).  Finally, we apply \hfa\ to ...
-
+    Two common tasks in Astronomical data analysis is to construct a model 
+    for the mean and intrinsic variance given a set of observations.  The 
+    former is typically calculated as a simple or inverse variance weighted 
+    average, while the latter is often constructed using methods like 
+    Principal Components Analysis (PCA).  However, when sample sizes are 
+    relatively small the heterogenous noise properties of a sample can 
+    lead to significant biases in the inferred models.  To remedy this, we 
+    present a generalization of Factor Analysis, dubbed Heteroskedastic 
+    Factor Analysis (HFA), which constructs a simultaneous model for the mean 
+    and underlying variance of a sample while accounting for arbitrary noise
+    heterogeneity.  We show that HFA provides an optimal estimate of the 
+    sample mean by providing the lowest bias and variance relative to the 
+    true mean of the distribution.  In addition, HFA constructs an optimal 
+    model of the intrinsic variance of the sample, yielding similar performance 
+    to inverse variance weighted PCA.  It should be noted, however, that HFA 
+    is computationally expensive and should only be used where it significantly 
+    outperforms standard methods.  We provide practical guidelines for the 
+    use of HFA.
+     
+    
 \end{abstract}
 
 \keywords{
@@ -70,17 +72,496 @@
 
 \section{Introduction}
 
-To say -
-\begin{itemize}
-\item PCA is widely used
-\item Noisy observations ruin PCA (under low $N$ samples)
-\item There are some traditional workarounds
-\end{itemize}
+Astronomical observations are limited by the availability of telescope 
+time.  This simple fact necessitates a compromise between the number of 
+observations take and signal-to-noise (S/N) at which they are made.  
+Moreover, differences in observing conditions and object brightnesses 
+ensure that \emph{all} samples taken for an experiment will have, 
+to some (perhaps large) degree, heterogeneous noise and/or missing data.  
+Often, the challenge to the astronomer is to attempt to construct a 
+quantitative understanding of the underlying population from which the 
+sample has been drawn.
+
+One way to understand the sample's population is to attempt to model the 
+intrinsic variation of amongst the data.  The most common method for such 
+modeling is Principal Components Analysis (PCA, CITES).  Below in Section 
+\ref{sec:hfa} we provide a summary of PCA.  In short, PCA is a transformation 
+of the covariance matrix of the data whose components represent the directions 
+of highest variation amongst the data.  PCA has served as valuable method to 
+understand astronomical data, particularly in the analysis of quasars (CITES) and 
+galaxies (CITES).  One flaw of PCA, however, is that it has no way of distinguishing 
+intrinsic variation from that due to observational noise.  As a result, PCA components 
+derived using data with significant and/or heterogeneous noise will contain 
+significant contamination.  \citet{bailey12} recognizes this fact, and resolves it 
+by accounting for the observational noise of each datum in the sample.  His method, 
+called `Weighted PCA', was shown to produce unbiased and minimal noise estimates 
+of the intrinsic PCA components.  It has since been used to ...
+
+One other (seemingly simple) way to characterize a data sample is to construct 
+an estimate of the mean.  Typically, two methods are used.  The first is a simple 
+arithmatic average over the $N$ number of samples - 
+\begin{eqnarray}
+\hat{\mu} & = &\frac{1}{N} \sum_i \X_i
+\quad,
+\label{eq:standardmean}
+\end{eqnarray}
+where $\X_i$ is a given datum (e.g, spectrum or list of pixels).   A fatal flaw of this 
+simple estimator is that noisier data enter into the mean model with equal weight as 
+data with high S/N.  The resulting consequence of which is an estimate of the mean 
+that will contain significant noise if low S/N data is present.  It has been shown (CITES) 
+that a better estimator is often obtained when the mean is constructed via inverse 
+variance weights - 
+\begin{eqnarray}
+\tilde{\mu} & = &\frac{ \sum_i \w_i \X_i } {\sum_i \w_i}
+\quad,
+\label{eq:weightedmean}
+\end{eqnarray}
+where the weights $\w_i = 1 / \var_i$ are the inverse variances for datum $i$.  Since 
+lower S/N data enter into the mean estimation with lower weight, the resulting mean 
+estimator $\tilde{\mu}$ is a less noisy estimate of the true mean.  However, 
+$\tilde{\mu}$ is not without shortcomings.  Since the value of $\tilde{\mu}$ relies 
+more heavily on high S/N data, it will be biased away from the mean one would 
+recover if the data was noiseless.  Depending on whether the high S/N portion of the 
+sample is closer or further away from the true mean.
+
+In this paper we present a generic method to model data samples which we refer 
+to as Heteroskedastic Factor Analysis (HFA).  Our method is an extension of standard 
+Factor Analysis that incorporates known noise estimates and models 
+any misestimation of the noise properties.  Doing so, the HFA constructs a simultaneous 
+model of the mean, the intrinsic covariance, and parts of the covariance due to 
+observational noise.  In Section \ref{sec:hfa} we present the method, in Sections
+\ref{sec:sine} and \ref{sec:sdss} we demonstrate the advantages of the method using toy data with known 
+mean and covariance properties, and finally in Section \ref{sec:conclusions} we summarize 
+our findings.
 
 
-\section{Dimensionality Reduction using Matrix Factorization}
+RF - (LEWIN-KOH \& AMEMIYA 2003)
 
-\subsection{Principle Components Analysis}
+\section{Heteroskedastic Factor Analysis}
+\label{sec:hfa}
 
+To understand Heteroskedastic Factor Analysis (HFA) it helps to first review the 
+structure and methodology of Principal Components Analysis.  Principal Components 
+Analysis (PCA) \citep{pearson01, hotelling33} is the most fundamental and standard 
+tool used to decompose and reduce dimensionality in real-valued data.  In short, when 
+modeling $N$ samples of $D$ dimensional data, PCA seeks to find another $D$ dimensional 
+orthonormal basis that is a linear combination of the original basis which better represents 
+the data at hand.  In particular, PCA constructs an eigenvalue decomposition of the data, 
+where the eigenvectors are aligned with the directions of the data variance with magnitudes 
+represented by the eigenvalues.  
+
+There are many approaches to conducting PCA.  Here we mention a
+standard method - singular value decomposition (SVD).  A standard
+function call for many analysis packages, SVD produces the
+eigenvectors (scaled by $\sqrt{N-1}$) and the square root the
+eigenvalues.  From here, it is left to the user to decide how many
+eigenvectors to retain, either from practical considerations (how much
+future computations cost) or performance (how much of the variance
+variance is retained).  Readers interested in more details of PCA
+should consult the vast literature, one useful description may be
+found in \citet{bishop06}.
+
+There are many circumstances for which PCA is a great tool for
+dimensionality reduction.  In high signal-to-noise data, very little
+of the variance amongst the data originates from instrumental noise but
+instead is intrinsic to the objects being studied.  For this reason,
+the eigenvectors generated from PCA have been examined in detail, in
+hopes uncovering some of the physical processes present in the
+observations.
+
+A major downside of standard PCA, especially when used on noisy data, 
+is that the algorithm constructs a full-rank ($D \times D$) factorization of the 
+data.  Dimensional reduction is done after running PCA, when the user 
+chooses which top $M$ eigenvectors to retain. The problem with such 
+decompositions is that it may not be feasible to compute (due to memory 
+issues), and worse they may be more sensitive to noise (see Section \ref{sec:sine} 
+below).  
+
+One method to alleviate these issues is to instead seek a low dimensional 
+$D \times M$ factorization from the start, instantiating $M$ a priori.  A general family 
+of such algorithms can be thought of asking --- Is there linear transformation 
+that can be applied to the data, such that it's distribution is a multivariate 
+Gaussian with unit variance in the new (orthonormal) basis? Mathematically, 
+the data may be written as 
+\begin{eqnarray}
+\Y &=& \lam \X + \eps
+\quad,
+\label{eq:lowrank}
+\end{eqnarray}
+where $\Y$ is the data, $\lam$ is the transformation matix (dimension $D \times 
+M$, $\X$ are the `latent' variables drawn from $\N(0,{\rm \I})$, and $\eps$
+is the additive noise drawn from $\N(0,\ps)$.  Assuming
+independence, $\Y$ is drawn from $N(0,\sig)$ where $\sig = \lam \transpose{\lam} + \ps$.
+Note, the covariance $\sig$ has an `intrinsic' component ($\lam \transpose{\lam}$) 
+and a diagonal `measurement noise' component ($\ps$), and also that the mean $\m$ 
+has been subtracted off. 
+
+When the model above has treats $\ps$ as a diagonal matrix with $D$ parameters, 
+it is referred to as Factor Analysis (FA).\footnote{If instead the model places only on value 
+on the diagonal, $\ps = \sigma^2\I$, it is referred to as `Probabilistic PCA' 
+\citep{roweis98}}  The advantage of Factor Analysis over PCA is that it can separately 
+model the intrinsic variation in the sample along with the part of variation due to 
+observational noise.  
+
+For scientists, however, there is one critical flaw with standard 
+FA - it assumes a single model for the observation noise can adequately represent the 
+data.  In most real-world experiments, however, this is not the case since observations 
+are often taken under different conditions and subsequently have different noise 
+properties across a sample.  A better model, is to instead allow a different $\ps$ for 
+each sample $i$.  This model, which we refer to as Heteroskedastic Factor Analysis, 
+is a more general version of FA as it can handle data drawn from heterogeneous noise 
+properties.  HFA is a probabilistic multi-variate Gaussian model, whose log-likelihood is 
+\begin{eqnarray}
+\ln(\mathcal{L}) &=& \frac{1}{2} \sum_i \left(\ln(2\pi) + D\log|\sig_i| + (\Y_i-\m)\sig_i^{-1}(\Y_i-\m)^T\right)
+\quad.
+\label{eq:lowrank}
+\end{eqnarray}
+
+\noindent Gradients of this log-likelihood are provided for reference in Appendix A.  
+Our implementation of HFA may be found at \texttt{https://github.com/rossfadely/consomme}, 
+along with associated documentation.
+
+A major downside to HFA is computational cost.  Since the data are each modeled by their 
+own covariance $\sig_i$, computing the likelihood requires $(N-1) \times D$ more 
+calculations of $\log|\sig_i|$ and $\sig_i^{-1}$ which are computationally expensive operations.
+Furthermore, by expanding $\ps \rightarrow \ps_i$ we have introduced an 
+additional $(N-1) \times D$ parameters to the model.  Fortunately, this explosion of 
+parameters can be mitigated if a measurement or model for the noise properties $\var_i$ 
+exists.  In such cases, we simply model the matrix $\ps$ as $\mathtt{diag}(\var_i)$.
+While expensive to compute, the advantage of HFA is that it returns a model for both the mean 
+and the variance of the sample, incorporating the noise properties of the data.  We show below 
+that these estimates are optimal, particularly in the case of low signal to noise and/or low 
+numbers of samples.
+
+\section{Sinusoidal Toy Data}
+\label{sec:sine}
+
+In this section, we assess the performance of different methods for estimating the mean 
+and modeling the variance of toy data generated orthogonal sinusoids.  When examining 
+the mean, we consider the standard mean (Equation \ref{eq:standardmean}), the 
+inverse variance weighted (IVW) mean (Equation \ref{eq:weightedmean}), and the model mean 
+produced by HFA.  These mean estimates are compared to the true mean as well as the 
+'sample' mean, which is the standard mean in the absence of noise.  For modeling the 
+sample variance, we consider standard PCA, the inverse variance weighted PCA of 
+\citet{bailey12}, and our HFA model.
+
+The left column of Figure \ref{fig:sine-toy-mean} shows example data used for our testing.  The 
+data for each sample consists of $N=100$ samples, randomly draw using 3 sinusoidal 
+eigenvectors of different frequencies.  In all cases noise is added to the curves, with a 
+random 10\% of the sample constructed to have larger noise which varies across the 
+sample.  We note that this data is the same as that used in \citet{bailey12} but with a linearly 
+increasing mean added to each sample.  
+
+Our assessment of the performance of the three mean estimators is summarized by the middle 
+and right columns of Figure \ref{fig:sine-toy-mean}.  First, we find that the standard mean provides 
+a noisier estimation of the mean, which is biased relative to the true mean.  This bias is exactly 
+that of the sample mean.  IVW mean estimates are generally much less 
+noisy than those provided, with a larger variance in its bias away from the true mean.  This 
+consequence arises from the fact that that the IVW estimates place 
+stronger reliance on high S/N data, and as a result the mean may be less or more biased than 
+the sample mean depending on which samples happen to be of higher S/N.  Finally, we find that 
+mean estimates produced by HFA give a low noise estimate of the mean, which precisely tracks 
+the sample mean.  Because the performance of IVW mean estimates depends on which samples 
+are measured at high S/N, for a given sample it may be a closer estimate of the mean than that 
+produced using HFA.  Table \ref{tab:sine} gives the root mean squared error (RMSE) of the mean 
+estimators for 1000 trials at different sample sizes $N$.  We find that mean estimates using HFA 
+give the lowest RMSE on average, with the lower variance than IVW estimates.  It is worth noting 
+that the standard mean has lower variance than the other estimators, but this advantage is dwarfed 
+by much poorer average performance.
+
+\begin{figure}[ht]
+\centering
+ \includegraphics[clip=true, trim=0cm 0cm 0.0cm 0.cm,width=17cm]{/Users/rossfadely/consomme/plots/simple_toy_ex_mean.png}
+\caption{Mean estimate comparisons for toy sinusoidal data, with the top row and bottom row showing results for two independently drawn random samples.  The left column shows example data, with the top two examples in each panel showing typical high S/N data and the bottom two showing typical examples from the 10\% of the data with lower S/N.  The red curve in the left column shows the noiseless version of the given datum.  The middle panel shows in red the three mean estimators, and the (noiselessly estimated) sample mean for reference.  The true mean of the sample is shown in black in the middle column.  Finally, the right column shows the residuals of the three mean estimators, relative to the sample mean.}
+\label{fig:sine-toy-mean}
+\end{figure}
+
+Using the same set of data described above, we examine the variance models produced by 
+PCA, IVW PCA, and HFA by considering the fidelity with which the underlying eigenvectors 
+are recovered.  In the case of HFA, we must first note one subtlety.  Do to the fact that 
+$\lam \transpose{\lam} = \tilde{\lam}\transpose{\tilde{\lam}}$ if $\tilde{\lam} = \mathbf{R} \lam$ 
+and $\mathbf{R}$ is an orthogonal rotation matrix, it is generally the case that iteration 
+based methods for finding $\lam$ will be rotated relative to the PCA basis.  As such, when 
+comparing HFA factors to eigenvectors, we ask which linear combination of factors produces 
+the eigenvector in question.  Once done, we have an apples-to-apples way of comparing 
+the three different methods.  In Figure \ref{fig:sine-toy-eig}, we show the eigenvectors used to 
+produce our toy samples as well as the recovered model eigenvectors using PCA, IVW PCA, 
+and HFA.  For PCA, we find that noise is significantly propagated into the model of the 
+eigenvectors.  Most notably this is seen for the third eigenvector, which (since it is responsible 
+for less variation relative to the noise) is not even approximately recovered.  In stark contrast, 
+both IVW PCA and HFA are able to recover the eigenvectors with very low error.  We generally 
+find IVW PCA and HFA perform equally well relative to one another, with RMSE mean and 
+variance within just a few percent of each other.
+
+\begin{figure}[ht]
+\centering
+ \includegraphics[clip=true, trim=0cm 0cm 0.0cm 0.cm,width=17cm]{/Users/rossfadely/consomme/plots/simple_toy_ex_eigvec.png}
+\caption{Eigenvectors and models for the three components used to generate our sinusoidal data.  The top and bottom rows correspond to results for the samples shown in Figure \ref{fig:sine-toy-mean}.  Plotted in red are the recovered eigenvectors, while the black curves show the true eigenvectors.  Note for HFA that, due to rotation degeneracies, the plotted eigenvectors are a linear combination of the model factors.}
+\label{fig:sine-toy-eig}
+\end{figure}
+
+
+\begin{deluxetable}{lcccc}
+\label{tab:sine}
+\tablecolumns{8}
+\tablewidth{0pc}
+\tablecaption{Sinusoidal Toy Data - RMSE relative to True Value}
+\tablehead{
+ $N$ & Sample Mean & Standard Mean & IVW Mean & HFA Mean }
+ \startdata
+ 50 & $1.28\pm0.83$ & $1.47\pm0.74$ & $1.38\pm0.83$ & $1.30\pm0.82$ \\
+ 100 & $0.86\pm0.55$ & $0.99\pm0.50$ & $0.90\pm0.55$ & $0.87\pm0.55$ \\
+ 200 & $0.63\pm0.41$ & $0.72\pm0.37$ & $0.68\pm0.43$ & $0.64\pm0.40$ \\
+\enddata
+\end{deluxetable}
+
+
+\section{Spectral toy data}
+\label{sec:sdss}
+
+For a more realistic test case for Astronomy, we examine mean and variance modeling 
+methods on spectra constructed to resemble those observed by the Sloan Digital Sky 
+Survey (SDSS).  Specifically, we use the mean and eigenspectra of galaxies from \citet{yip04} 
+to generate noiseless spectra.  We chose the top 4 eigenspectra, with eigenvalues 
+selected such that the generated spectra resemble early-type galaxies.  To these 
+noise-free spectra we add a noise spectrum who's shape is close to the mean noise 
+shape of galaxies measured in SDSS.  The level of the noise drawn randomly from 
+a uniform distribution that spans a factor 10, in a range that is similar to that of typical 
+observations.  
+
+Figure \ref{fig:sdss-toy} shows the data and mean spectra in a format the same as 
+Figure \ref{fig:sine-toy-mean}.  In this experiment, we find our general conclusions found 
+in Section \ref{sec:sine-toy} hold - i) standard mean calculations provide a noisy 
+estimate of the mean compared to those given by IVW means and HFA means, 
+ii) IVW mean estimates are biased relative to the sample mean while HFA mean 
+estimates are not, and iii) IVW PCA and HFA do a similarly well in capturing the intrinsic 
+variance structure of the data.  In Table \ref{tab:sdss} we give the results of our 
+analysis.  In assessing the quality of the mean spectra, we consider three quantities.  
+First, we calculate the RMSE relative to the true mean, when the data are unnormalized.  
+This is analogous to taking real spectra (with different flux amplitudes) and asking what 
+is the mean flux amplitude of the sample.  Second, we calculate the RMSE for data that 
+has been normalized, analogous to what is done when only the relative spectral is 
+desired.  Finally, we measure the relative performance in estimating the equivalent width 
+of the CH line near 4300 \AA.  For a sample size of 100 spectra, and given the chosen 
+covariance structure, we find HFA estimates of the mean of unnormalized spectra are 
+XX\% better than those founds using IVW, with a variance that is YY\% lower.  For the 
+normalized spectra, the two methods are nearly comparable.  This result is due to the 
+relatively lower variance in the sample mean than the experiments in Section 
+\ref{sec:sine}.  Results in measuring equivalent widths (modeled using a mixture of 
+two gaussians) are also found to have comparable results.  The mean RMSE of the 
+equivalent with is XX and YY for IVW and HFA mean estimates, respectively.  While both 
+are relatively low error rates compared to the sample mean RMSE of XX, it is worth 
+noting that HFA derived estimates are YY times better generally, with a variance that 
+is ZZ times lower.  
+
+We note that, for our implementation, the HFA model converges 
+after approximately 10 hours using 6 nodes on a modern workstation for this experiment 
+of scale $N \times D = 100 \times 3000$.  While the algorithm scales linearly with $N$, 
+it scales with $D^2$ or $D^3$ depending on implementation details.  Thus, the algorithm 
+may not be suitable for experiments where $D$ is large.
+
+\begin{figure}[ht]
+\centering
+ \includegraphics[clip=true, trim=0cm 0cm 0.0cm 0.cm,width=17cm]{/Users/rossfadely/consomme/plots/sdss_toy_ex_mean.png}
+\caption{The same as Figure \ref{fig:sine-toy-mean}, exempt for data generated using the mean and eigenspectra from \citet{yip04}.  Note the data in the samples are not normalized to have the sample flux at some wavelength or wavelength range.  Due to this, a uniform offset can be seen between the estimated means and the true mean.}
+\label{fig:sdss-toy}
+\end{figure}
+
+
+\begin{deluxetable}{lcccc}
+\label{tab:sdss}
+\tablecolumns{8}
+\tablewidth{0pc}
+\tablecaption{Spectra Toy Data - RMSE relative to True Value}
+\tablehead{
+ \colhead{} & Sample Mean & Standard Mean & IVW Mean & HFA Mean }
+ \startdata
+ Unnormalized Data & $3.39\pm3.16$ & $10.13\pm3.33$ & $5.68\pm2.45$ & $4.39\pm2.05$ \\
+ Normalized Data & $0.29\pm0.18$ & $7.08\pm0.75$ & $2.25\pm0.72$ & $1.96\pm0.35$ \\
+ Equivalent Width & $0.007\pm0.006$ & $0.044\pm0.75$ & $0.033\pm0.037$ & $0.021\pm0.016$ \\
+\enddata
+\end{deluxetable}
+
+\section{Conclusions and practical advice}
+\label{sec:conclusions}
+
+We have presented a novel extension of Factor Analysis that models each datum with 
+its own covariance matrix, constructed by factors that are constrained by the intrinsic 
+variance across the sample as well as the datum's noise measurements.  The method, 
+referred to as Heteroskedastic Factor Analysis, constructs a model for the mean and 
+covariance structure of the sample under heterogeneous noise conditions.  Using 
+generated data, we assess the performance of HFA relative to standard estimates of 
+the mean and eigenvectors.  We find HFA will generally provide a better estimate of 
+the mean of the sample, with lower average RMSE relative to the true mean.  
+Performance gains are problem specific - if the sample mean does not vary significantly, 
+inverse variance weighted mean estimates are likely equally as good.  Additionally, 
+if the noise contribution to the data is relatively unimportant, standard mean estimates 
+will perform comparably to HFA.  In encoding the intrinsic variance structure of the data, 
+we find HFA performs equally as well as inverse variance weighted PCA.  Both methods 
+outperform standard PCA when samples are at low S/N.  
+
+Generally speaking it will always be advisable to use HFA to estimate the mean of a 
+sample, if it is computationally feasible.  To assess whether HFA will produce a different 
+(and therefore on average better) estimate than IVW means, one should examine the 
+residuals from standard mean and the IVW mean.  If the mean of the residuals is centered 
+on zero, HFA will not likely produce better results than IVW means.  As a test of the relative 
+gains using HFA (as well as runtime) we advise subsampling the data along $D$ and 
+examining the results.  Finally, for preforming covariance modeling we prefer IVW PCA 
+over HFA for its relative simplicity, interpretability of the returned eigenvectors, and 
+significantly faster runtime.
+
+
+\section{Appendix}
+\appendix
+\section{Gradients of mean, factor loadings, and simple jitter models for HFA.}
+
+\newcommand{\data}{\mbf{x}}
+\newcommand{\latent}{\mbf{s}}
+\newcommand{\mean}{\mbf{\mu}}
+\newcommand{\cov}{\mbf{\Sigma}}
+\newcommand{\eye}{\mbf{I}}
+\newcommand{\bta}{\mbf{\beta}}
+\newcommand{\lmda}{\mbf{\Lambda}}
+\newcommand{\et}{\mbf{\eta^2}}
+
+
+Definitions -- \\ \\
+\begin{tabular}{lcl}
+$K$ &:&the number of mixture components, subscripted by $k$\\
+$M$&:& the number of latent dimensions\\
+$D$&:& the dimensionality of the data's features, subscripted by $j$\\
+$N$ &:&the number of data points, subscripted by $i$\\
+$\data$ &:&data which is a $N \times D$ dimensional matrix\\ 
+$\sig$ &:& observational variance model, which is a $N \times D$ dimensional matrix\\ 
+$\et$ &:& jitter, which can be a scalar, vector, or tensor...\\ 
+$\lmda_k$ &:&the transformation matrix for $\latent_k$, dimension
+$D \times M$ subscripted with $j$ rows and $l$ columns\\
+$\ps_k$ &:&the diagonal variance matrix for component $k$, dimension $D\times D$\
+\end{tabular}
+
+\vspace{12pt}
+Calculations below have been faciltated using those presented 
+in a note by {\tt \href{http://bit.ly/11JqOFK}{Jason Rennie (2006)}}.
+The primary difference is that we are interested in an alteration to
+the $\ps$ matrix (which he writes as diag($\sigma^2$)).  That is, 
+we require each datum has its own $\Psi$, and that it is 
+diag($\sig+\et$), where $\sig$ is the
+observational noise spectrum for the object and $\eta$ is a jitter
+added to the diagonal. \\
+
+For a single factor analyzer, the negative log-likelihood $J_i$ for a single spectrum $i$ can be
+written as
+
+\begin{eqnarray}\displaystyle
+J_{i} &=& C + \frac{1}{2}\left(D\log|\Sigma_i| + (\data_i-\mean)\Sigma_i^{-1}(\data_i-\mean)^T\right)
+\quad .
+\label{eqn:nll}
+\end{eqnarray}
+
+Note that the total negative log-likelihood is the sum over $J_i$.
+
+\subsection{Jitter Gradient}
+
+Lets assume jitter is constant across the data but not along
+dimensionality, meaning $\et$ is a $D$ dimensional vector.  From the
+first piece of Equation \ref{eqn:nll} we have:
+
+\begin{eqnarray}\displaystyle
+\frac{\partial J_1}{\partial \eta_j^2} &=& D\sum_i \sum_{u,v}
+\frac{\partial \log|\Sigma_i|}{\partial
+  \Sigma_{iuv}}\frac{\Sigma_{iuv}}{\partial \eta_j^2} \\
+&=& D \sum_i \Sigma_{jj}^{-1}
+\quad .
+\label{eqn:gradjit1}
+\end{eqnarray}
+
+and for the second we have:
+
+\begin{eqnarray}\displaystyle
+\frac{\partial J_2}{\partial \eta_j^2} &=& \sum_i \sum_{p,q,u,v}
+[\data_i-\mean]_p [\data_i-\mean]_q\frac{\partial \Sigma^{-1}_{ipq}}{\partial
+  \Sigma_{iuv}}\frac{\Sigma_{iuv}}{\partial \eta_j^2} \\
+&=& -\sum_i \sum_{p,q}[\data_i-\mean]_p [\data_i-\mean]_q\Sigma_{bj}^{-1}\Sigma_{jc}^{-1}\\
+&=& -\sum_i \Sigma_{j.}^{-1}[\data_i-\mean]^T [\data_i-\mean]\Sigma_{.j}^{-1}
+\quad .
+\label{eqn:gradjit2}
+\end{eqnarray}
+
+The notation $\Sigma_{.j}$ means the $j$th column of $\Sigma$.
+
+\subsection{Factor Loading Gradient}
+
+\begin{eqnarray}\displaystyle
+\frac{\partial J_1}{\partial \Lambda_{lj}} &=& D\sum_i \sum_{u,v}
+\frac{\partial \log|\Sigma_i|}{\partial
+  \Sigma_{iuv}}\frac{\Sigma_{iuv}}{\partial \Lambda_{lj}} \\
+&=& D \sum_i \left[\sum_v\Sigma^{-1}_{ilv}\Lambda_{vj} + \sum_v\Sigma^{-1}_{ilu}\Lambda_{uj}\right]\\
+&=& D \sum_i \Sigma^{-1}_{il.}\Lambda_{.j}
+\quad .
+\label{eqn:lambda1}
+\end{eqnarray}
+
+Next,
+
+\begin{eqnarray}\displaystyle
+\frac{\partial J_2}{\partial \Lambda_{lj}} &=&  \sum_i \sum_{p,q,u,v}
+[\data_i-\mean]_p [\data_i-\mean]_q\frac{\partial \Sigma^{-1}_{ipq}}{\partial
+  \Sigma_{iuv}}\frac{\Sigma_{iuv}}{\partial \Lambda_{lj}} \\
+&=& - \sum_i \sum_{p,q,u} [\data_i-\mean]_p [\data_i-\mean]_q
+\Sigma^{-1}_{ipu}\Sigma^{-1}_{ilq}\Lambda_{uj} \\
+&&  - \sum_i \sum_{p,q,v} [\data_i-\mean]_p [\data_i-\mean]_q
+\Sigma^{-1}_{ipl}\Sigma^{-1}_{ivq}\Lambda_{vj} \\
+&=& -2 \sum_i \Sigma_{l.}^{-1}[\data_i-\mean]^T [\data_i-\mean]\Sigma^{-1}\Lambda_{.j}
+\quad .
+\label{eqn:gradlambda2}
+\end{eqnarray}
+
+\subsection{Mean Gradient}
+
+\begin{eqnarray}\displaystyle
+\frac{\partial J_1}{\partial \mean_{j}} &=&  0
+\quad .
+\label{eqn:gradmean1}
+\end{eqnarray}
+
+and 
+
+\begin{eqnarray}\displaystyle
+\frac{\partial J_2}{\partial \mean_{j}} &=&  -\sum_{i,p}
+[\data_i-\mean]_p\Sigma_{pj}^{-1}  -\sum_{i,q}
+\Sigma_{jq}^{-1} [\data_i-\mean]_q \\
+&=&  -2 \sum_{i,p} [\data_i-\mean]_p\Sigma_{pj}^{-1} \\
+&=& -2 \sum_i [\data_i-\mean] \Sigma_{.j}^{-1}
+\quad .
+\label{eqn:gradmean2}
+\end{eqnarray}
+
+Where the last two steps make use of the fact that $\Sigma$ is a
+symmetric matrix.
+
+
+\clearpage
+
+\begin{thebibliography}{}\raggedright
+
+\bibitem[{{Bailey} (2012)}]{bailey12}
+{Bailey}, S., 2012, PASP, 124, 1015
+
+\bibitem[{{Bishop} (2006)}]{bishop06}
+{Bishop}, C. M., 2006, \textit{Pattern Recognition and Machine
+  Learning}, Springer-Verlag, New York
+
+\bibitem[{{Hotelling} (1933)}]{hotelling33}
+{Hotelling}, H., 1933, Journal of Educational Psychology, 24, 417
+
+\bibitem[{{Pearson} (1901)}]{pearson01}
+{Pearson}, K., 1901, Philosophical Magazine, 6, 2, 11
+
+\bibitem[{{Yep et al.} (2004)}]{yip04}
+{Yip}, C. W., et al., 2004, AJ, 128, 585
+
+\end{thebibliography}
+
+\clearpage
 
 \end{document}
