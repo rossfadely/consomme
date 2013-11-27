@@ -48,10 +48,14 @@
     present a generalization of Factor Analysis, dubbed Heteroskedastic 
     Factor Analysis (HFA), which constructs a simultaneous model for the mean 
     and underlying variance of a sample while accounting for arbitrary noise
-    heterogeneity.  We show that HFA provides an optimal estimate of the 
-    sample mean by providing the lowest bias and variance relative to the 
-    true mean of the distribution.  In addition, HFA constructs an optimal 
-    model of the intrinsic variance of the sample, yielding similar performance 
+    heterogeneity.  Because HFA constructs a covariance model for each datum, 
+    it can naturally account for missing data by giving those values zero weight.  
+    HFA is a probabilistic factorization of the data variance, and can therefore 
+    provide a likelihood for each datum which may then be used to identify 
+    inliers and outliers in the sample.  We show that HFA provides an optimal 
+    estimate of the sample mean by providing the lowest bias and variance 
+    relative to the true mean of the distribution.  In addition, HFA constructs an 
+    optimal model of the intrinsic variance of the sample, yielding similar performance 
     to inverse variance weighted PCA.  It should be noted, however, that HFA 
     is computationally expensive and should only be used where it significantly 
     outperforms standard methods.  We provide practical guidelines for the 
@@ -84,22 +88,26 @@ sample has been drawn.
 
 One way to understand the sample's population is to attempt to model the 
 intrinsic variation of amongst the data.  The most common method for such 
-modeling is Principal Components Analysis (PCA, CITES).  Below in Section 
+modeling is Principal Components Analysis (PCA) \citep{pearson01, hotelling33, 
+karhunen47, loeve48}.  Below in Section 
 \ref{sec:hfa} we provide a summary of PCA.  In short, PCA is a transformation 
 of the covariance matrix of the data whose components represent the directions 
 of highest variation amongst the data.  PCA has served as valuable method to 
-understand astronomical data, particularly in the analysis of quasars (CITES) and 
-galaxies (CITES).  One flaw of PCA, however, is that it has no way of distinguishing 
+understand astronomical data, particularly in the analysis of quasars \citep[e.g.,][]{boroson92, 
+yip04b} and 
+galaxies \citep[e.g.,][]{connolly95, yip04a}.  One flaw of PCA, however, is that it has no way of distinguishing 
 intrinsic variation from that due to observational noise.  As a result, PCA components 
 derived using data with significant and/or heterogeneous noise will contain 
-significant contamination.  \citet{bailey12} recognizes this fact, and resolves it 
+significant contamination.  
+
+\citet{bailey12} recognizes this fact, and resolves it 
 by accounting for the observational noise of each datum in the sample.  His method, 
 called `Weighted PCA', was shown to produce unbiased and minimal noise estimates 
 of the intrinsic PCA components.  It has since been used to ...
 
-One other (seemingly simple) way to characterize a data sample is to construct 
+One other (simple) way to characterize a data sample is to construct 
 an estimate of the mean.  Typically, two methods are used.  The first is a simple 
-arithmatic average over the $N$ number of samples - 
+arithematic average over the $N$ number of samples - 
 \begin{eqnarray}
 \hat{\mu} & = &\frac{1}{N} \sum_i \X_i
 \quad,
@@ -255,13 +263,13 @@ increasing mean added to each sample.
 Our assessment of the performance of the three mean estimators is summarized by the middle 
 and right columns of Figure \ref{fig:sine-toy-mean}.  First, we find that the standard mean provides 
 a noisier estimation of the mean, which is biased relative to the true mean.  This bias is exactly 
-that of the sample mean.  IVW mean estimates are generally much less 
+that of the true sample mean.  IVW mean estimates are generally much less 
 noisy than those provided, with a larger variance in its bias away from the true mean.  This 
 consequence arises from the fact that that the IVW estimates place 
 stronger reliance on high S/N data, and as a result the mean may be less or more biased than 
-the sample mean depending on which samples happen to be of higher S/N.  Finally, we find that 
+the true sample mean depending on which samples happen to be of higher S/N.  Finally, we find that 
 mean estimates produced by HFA give a low noise estimate of the mean, which precisely tracks 
-the sample mean.  Because the performance of IVW mean estimates depends on which samples 
+the true sample mean.  Because the performance of IVW mean estimates depends on which samples 
 are measured at high S/N, for a given sample it may be a closer estimate of the mean than that 
 produced using HFA.  Table \ref{tab:sine} gives the root mean squared error (RMSE) of the mean 
 estimators for 1000 trials at different sample sizes $N$.  We find that mean estimates using HFA 
@@ -272,7 +280,7 @@ by much poorer average performance.
 \begin{figure}[ht]
 \centering
  \includegraphics[clip=true, trim=0cm 0cm 0.0cm 0.cm,width=17cm]{/Users/rossfadely/consomme/plots/simple_toy_ex_mean.png}
-\caption{Mean estimate comparisons for toy sinusoidal data, with the top row and bottom row showing results for two independently drawn random samples.  The left column shows example data, with the top two examples in each panel showing typical high S/N data and the bottom two showing typical examples from the 10\% of the data with lower S/N.  The red curve in the left column shows the noiseless version of the given datum.  The middle panel shows in red the three mean estimators, and the (noiselessly estimated) sample mean for reference.  The true mean of the sample is shown in black in the middle column.  Finally, the right column shows the residuals of the three mean estimators, relative to the sample mean.}
+\caption{Mean estimate comparisons for toy sinusoidal data, with the top row and bottom row showing results for two independently drawn random samples.  The left column shows example data, with the top two examples in each panel showing typical high S/N data and the bottom two showing typical examples from the 10\% of the data with lower S/N.  The red curve in the left column shows the noiseless version of the given datum.  The middle panel shows in red the three mean estimators, and the (noiselessly estimated) true sample mean for reference.  The true mean of the sample is shown in black in the middle column.  Finally, the right column shows the residuals of the three mean estimators, relative to the true sample mean.}
 \label{fig:sine-toy-mean}
 \end{figure}
 
@@ -282,8 +290,9 @@ are recovered.  In the case of HFA, we must first note one subtlety.  Do to the 
 $\lam \transpose{\lam} = \tilde{\lam}\transpose{\tilde{\lam}}$ if $\tilde{\lam} = \mathbf{R} \lam$ 
 and $\mathbf{R}$ is an orthogonal rotation matrix, it is generally the case that iteration 
 based methods for finding $\lam$ will be rotated relative to the PCA basis.  As such, when 
-comparing HFA factors to eigenvectors, we ask which linear combination of factors produces 
-the eigenvector in question.  Once done, we have an apples-to-apples way of comparing 
+comparing HFA factors to eigenvectors we run standard PCA on the $\lam \transpose{\lam}$ 
+matrix, in order to get eigenvectors rotated into the PCA basis.  Once done, we have an 
+apples-to-apples way of comparing 
 the three different methods.  In Figure \ref{fig:sine-toy-eig}, we show the eigenvectors used to 
 produce our toy samples as well as the recovered model eigenvectors using PCA, IVW PCA, 
 and HFA.  For PCA, we find that noise is significantly propagated into the model of the 
@@ -307,7 +316,7 @@ variance within just a few percent of each other.
 \tablewidth{0pc}
 \tablecaption{Sinusoidal Toy Data - RMSE relative to True Value}
 \tablehead{
- $N$ & Sample Mean & Standard Mean & IVW Mean & HFA Mean }
+ $N$ & True Sample Mean & Standard Mean & IVW Mean & HFA Mean }
  \startdata
  50 & $1.28\pm0.83$ & $1.47\pm0.74$ & $1.38\pm0.83$ & $1.30\pm0.82$ \\
  100 & $0.86\pm0.55$ & $0.99\pm0.50$ & $0.90\pm0.55$ & $0.87\pm0.55$ \\
@@ -321,7 +330,7 @@ variance within just a few percent of each other.
 
 For a more realistic test case for Astronomy, we examine mean and variance modeling 
 methods on spectra constructed to resemble those observed by the Sloan Digital Sky 
-Survey (SDSS).  Specifically, we use the mean and eigenspectra of galaxies from \citet{yip04} 
+Survey (SDSS).  Specifically, we use the mean and eigenspectra of galaxies from \citet{yip04a} 
 to generate noiseless spectra.  We chose the top 4 eigenspectra, with eigenvalues 
 selected such that the generated spectra resemble early-type galaxies.  To these 
 noise-free spectra we add a noise spectrum who's shape is close to the mean noise 
@@ -333,7 +342,7 @@ Figure \ref{fig:sdss-toy} shows the data and mean spectra in a format the same a
 Figure \ref{fig:sine-toy-mean}.  In this experiment, we find our general conclusions found 
 in Section \ref{sec:sine-toy} hold - i) standard mean calculations provide a noisy 
 estimate of the mean compared to those given by IVW means and HFA means, 
-ii) IVW mean estimates are biased relative to the sample mean while HFA mean 
+ii) IVW mean estimates are biased relative to the true sample mean while HFA mean 
 estimates are not, and iii) IVW PCA and HFA do a similarly well in capturing the intrinsic 
 variance structure of the data.  In Table \ref{tab:sdss} we give the results of our 
 analysis.  In assessing the quality of the mean spectra, we consider three quantities.  
@@ -346,11 +355,11 @@ of the CH line near 4300 \AA.  For a sample size of 100 spectra, and given the c
 covariance structure, we find HFA estimates of the mean of unnormalized spectra are 
 XX\% better than those founds using IVW, with a variance that is YY\% lower.  For the 
 normalized spectra, the two methods are nearly comparable.  This result is due to the 
-relatively lower variance in the sample mean than the experiments in Section 
+relatively lower variance in the true sample mean than the experiments in Section 
 \ref{sec:sine}.  Results in measuring equivalent widths (modeled using a mixture of 
 two gaussians) are also found to have comparable results.  The mean RMSE of the 
 equivalent with is XX and YY for IVW and HFA mean estimates, respectively.  While both 
-are relatively low error rates compared to the sample mean RMSE of XX, it is worth 
+are relatively low error rates compared to the true sample mean RMSE of XX, it is worth 
 noting that HFA derived estimates are YY times better generally, with a variance that 
 is ZZ times lower.  
 
@@ -363,7 +372,7 @@ may not be suitable for experiments where $D$ is large.
 \begin{figure}[ht]
 \centering
  \includegraphics[clip=true, trim=0cm 0cm 0.0cm 0.cm,width=17cm]{/Users/rossfadely/consomme/plots/sdss_toy_ex_mean.png}
-\caption{The same as Figure \ref{fig:sine-toy-mean}, exempt for data generated using the mean and eigenspectra from \citet{yip04}.  Note the data in the samples are not normalized to have the sample flux at some wavelength or wavelength range.  Due to this, a uniform offset can be seen between the estimated means and the true mean.}
+\caption{The same as Figure \ref{fig:sine-toy-mean}, exempt for data generated using the mean and eigenspectra from \citet{yip04a}.  Note the data in the samples are not normalized to have the sample flux at some wavelength or wavelength range.  Due to this, a uniform offset can be seen between the estimated means and the true mean.}
 \label{fig:sdss-toy}
 \end{figure}
 
@@ -374,7 +383,7 @@ may not be suitable for experiments where $D$ is large.
 \tablewidth{0pc}
 \tablecaption{Spectra Toy Data - RMSE relative to True Value}
 \tablehead{
- \colhead{} & Sample Mean & Standard Mean & IVW Mean & HFA Mean }
+ \colhead{} & True Sample Mean & Standard Mean & IVW Mean & HFA Mean }
  \startdata
  Unnormalized Data & $3.39\pm3.16$ & $10.13\pm3.33$ & $5.68\pm2.45$ & $4.39\pm2.05$ \\
  Normalized Data & $0.29\pm0.18$ & $7.08\pm0.75$ & $2.25\pm0.72$ & $1.96\pm0.35$ \\
@@ -393,7 +402,7 @@ covariance structure of the sample under heterogeneous noise conditions.  Using
 generated data, we assess the performance of HFA relative to standard estimates of 
 the mean and eigenvectors.  We find HFA will generally provide a better estimate of 
 the mean of the sample, with lower average RMSE relative to the true mean.  
-Performance gains are problem specific - if the sample mean does not vary significantly, 
+Performance gains are problem specific - if the true sample mean does not vary significantly, 
 inverse variance weighted mean estimates are likely equally as good.  Additionally, 
 if the noise contribution to the data is relatively unimportant, standard mean estimates 
 will perform comparably to HFA.  In encoding the intrinsic variance structure of the data, 
@@ -551,14 +560,33 @@ symmetric matrix.
 {Bishop}, C. M., 2006, \textit{Pattern Recognition and Machine
   Learning}, Springer-Verlag, New York
 
+\bibitem[{{Boroson \& Green} (1992)}]{boroson92}
+{Boroson}, T. A., \& Green, R. F., 1992, ApJ, 80, 109
+
+\bibitem[{{Connolly et al.} (1995)}]{connolly95}
+{Connolly}, A. J., et al., 1995, AJ, 110, 1071 
+
 \bibitem[{{Hotelling} (1933)}]{hotelling33}
 {Hotelling}, H., 1933, Journal of Educational Psychology, 24, 417
+
+\bibitem[{{Karhunen H.} (1947)}]{karhunen47}
+{Karhunen}, H., 1947, Ann. Acad. Sci. Fenn. Ser. AI, 37
+
+\bibitem[{{Lo\`{e}ve} (1948)}]{loeve48}
+{Lo\`{e}ve} M., 1948, Processus Stochastiques et Mouvement Brownien, Her- `
+mann, Paris, France
 
 \bibitem[{{Pearson} (1901)}]{pearson01}
 {Pearson}, K., 1901, Philosophical Magazine, 6, 2, 11
 
-\bibitem[{{Yep et al.} (2004)}]{yip04}
+\bibitem[{{Yep et al.} (2004a)}]{yip04a}
 {Yip}, C. W., et al., 2004, AJ, 128, 585
+
+\bibitem[{{Yep et al.} (2004b)}]{yip04b}
+{Yip}, C. W., et al., 2004, AJ, 128, 2603
+
+
+
 
 \end{thebibliography}
 
