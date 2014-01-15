@@ -1,19 +1,22 @@
 import numpy as np
 
-def ortho_rotation(lam, method = 'varimax',gamma = None,
-                   eps = 1e-6, itermax=100):
+def ortho_rotation(lam, method='varimax',gamma=None,
+                   eps=1e-6, itermax=100):
     """
     Return orthogal rotation matrix
 
     TODO: - other types beyond 
     """
-    if gamma==None:
-        if (method=='varimax'): gamma = 1.0
-        if (method=='quartimax'): gamma = 0.0
-    
+    if gamma == None:
+        if (method == 'varimax'):
+            gamma = 1.0
+        if (method == 'quartimax':
+            gamma = 0.0
+
     nrow, ncol = lam.shape
     R = np.eye(ncol)
     var = 0
+
     for i in range(itermax):
         lam_rot = np.dot(lam, R)
         tmp = np.diag(np.sum(lam_rot ** 2, axis=0)) / nrow * gamma
@@ -23,7 +26,5 @@ def ortho_rotation(lam, method = 'varimax',gamma = None,
         if var_new < var * (1 + eps):
             break
         var = var_new
+
     return R
-
-
-
