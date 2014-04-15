@@ -77,7 +77,11 @@ class HMF(object):
             self._m_step()
             if np.mod(i, check_iter) == 0:
                 new_nll =  0.5 * np.sum((self.dmm - self.projections) ** 2. * self.ivar)
-                print new_nll
+                print 'NLL at step %d is:' % i, new_nll
+            if ((nll - new_nll) / nll) < tol:
+                print 'Stopping at step %d with NLL:', new_nll
+            else:
+                nll = new_nll
 
     def _e_step(self):
         """
