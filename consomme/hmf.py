@@ -26,8 +26,8 @@ class HMF(object):
     - regularization
     - Automatic latent dimensionality determination.
     """
-    def __init__(self, data, K, ivar, max_iter=1000, check_iter=5,
-                 tol=1.e-4):
+    def __init__(self, data, K, ivar, max_iter=100, check_iter=5,
+                 tol=1.e-6):
         """
         `D` : Feature dimensionality
         `N` : Number of samples
