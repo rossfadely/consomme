@@ -26,7 +26,7 @@ class HMF(object):
     - regularization
     - Automatic latent dimensionality determination.
     """
-    def __init__(self, data, K, ivar, max_iter=100, check_iter=5,
+    def __init__(self, data, K, ivar, min_iter=5, max_iter=100, check_iter=5,
                  tol=1.e-6):
         """
         `D` : Feature dimensionality
@@ -56,7 +56,7 @@ class HMF(object):
         self.project()
 
         # go
-        self.run_em(tol, max_iter, check_iter)
+        self.run_em(tol, min_iter, max_iter, check_iter)
         
     def svd_pca(self, data):
         """
@@ -66,7 +66,7 @@ class HMF(object):
         eigval = S ** 2. / (data.shape[0] - 1.)
         return eigvec, eigval
 
-    def run_em(self, tol, max_iter, check_iter):
+    def run_em(self, tol, min_iter, max_iter, check_iter):
         """
         Use expectation-maximization to infer the model.
         """
@@ -76,12 +76,16 @@ class HMF(object):
             self._e_step()
             self._m_step()
             if np.mod(i, check_iter) == 0:
-                new_nll =  0.5 * np.sum((self.dmm - self.projections) ** 2. * self.ivar)
+                new_nll =  0.5 * np.sum((self.dmm - self.projections) ** 2. * 
+                                        self.ivar)
                 print 'NLL at step %d is:' % i, new_nll
-            if ((nll - new_nll) / nll) < tol:
-                print 'Stopping at step %d with NLL:', new_nll
+            if (((nll - new_nll) / nll) < tol) & (min_iter < i):
+                print 'Stopping at step %d with NLL:' % i, new_nll
+                self.nll = new_nll
+                break
             else:
                 nll = new_nll
+        self.nll = new_nll
 
     def _e_step(self):
         """

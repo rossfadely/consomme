@@ -59,11 +59,8 @@ class HFAModel(object):
         self.obsvar = obsvar
         self.psi_diag_inds = np.diag_indices_from(self.psiI)
 
-        self.initialize()
-        self.initial_mean = self.mean.copy()
-        self.initial_jitter = self.jitter.copy()
-        self.initial_lambda = self.lam.copy()
-        self.run_inference(max_fun, factr)
+        #self.initialize()
+        #self.run_inference(max_fun, factr)
 
     def initialize(self):
         """
@@ -92,7 +89,12 @@ class HFAModel(object):
         else:
             self.jitter = np.zeros(self.D)
 
-    def run_inference(self, max_fun, factr):
+        # save a copy
+        self.initial_mean = self.mean.copy()
+        self.initial_jitter = self.jitter.copy()
+        self.initial_lambda = self.lam.copy()
+
+    def run_inference(self, max_fun=1e6, factr=1e7):
         """
         Optimize the parameters using fmin_l_bfgs_b
         """
@@ -198,40 +200,7 @@ class HFAModel(object):
                 # fix to lemma-like version
                 self.inv_cov = np.linalg.inv(np.dot(self.lam, self.lam.T))
 
-    def crazy_dot(self, a, b, result):
-        """
-        Somehow this is faster...
-        """
-        for m in range(self.M):
-            result[:, m] = np.dot(a, b[:, m])
-        return result
 
-    def mean_gradients(self):
-        """
-        Return gradient of mean.
-        """
-        return -2. * self.dmmi
-
-    def lambda_gradients(self):
-        """
-        Return gradients for factor loadings.
-        """
-        pt1 = np.dot(self.inv_cov, self.lam)
-        pt2 = np.dot(self.dmm, pt1)
-        v = self.dmm[:, None] * pt2[None, :]
-        pt2 = np.zeros((self.D, self.M))  # crazy, this is faster.
-        for m in range(self.M):
-            pt2[:, m] = np.dot(self.inv_cov, v[:, m])
-        return 2. * (pt1 - pt2)
-
-    def jitter_gradients(self):
-        """
-        Return jitter gradient - Ross double check.
-        """
-        jgrad = self.inv_cov[self.psi_diag_inds] - self.dmmi * self.dmmi
-        if self.jtype is 'one':
-            jgrad = np.mean(jgrad)
-        return jgrad
 
     def total_negative_log_likelihood(self):
         """

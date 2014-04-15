@@ -10,17 +10,18 @@ class SDSSSpecPrep(object):
     Prepare SDSS spectra for factorization.
     """
     def __init__(self,spectralist,dlt=5.e-5,
-                 normalize=True,wavelimits=(5000,6000),
-                 ivar_factor=100,ivar_cut=0.001):
+                 normalize=True,wavelimits=(4000,5500),
+                 ivar_factor=100,ivar_cut=0.001,
+                 head=''):
 
-        self.load_data(spectralist)
+        self.load_data(spectralist,  head)
         self.make_default_grid(dlt)
         self.interpolate('default')
         if normalize:
             self.normalize(wavelimits[0],wavelimits[1])
         self.set_ivar_and_flux(ivar_cut,ivar_factor)
         
-    def load_data(self,spectralist):
+    def load_data(self, spectralist, head):
         """
         Load in the SDSS spectral data. 
         """
@@ -30,7 +31,7 @@ class SDSSSpecPrep(object):
 
         self.N = len(lines)
         for i in range(self.N):
-            f = pf.open(lines[i][:-1])
+            f = pf.open(head + lines[i][:-1])
             d1 = f[1].data
             d2 = f[2].data
             f.close()
@@ -45,7 +46,7 @@ class SDSSSpecPrep(object):
             self.ivar[i] = d1.field('ivar')
             self.wave[i] = 10.0 ** (d1.field('loglam'))
             self.z[i]    = d2.field('z')
-  
+            
     def make_default_grid(self,dlt):
         """
         Construct the final wavelength grid.
@@ -122,7 +123,7 @@ class SDSSSpecPrep(object):
             np.sum(self.final_ivar[:,ind],axis=1)
 
         self.final_flux /= means[:,None]
-        self.final_ivar /= means[:,None]
+        self.final_ivar *= means[:,None] ** 2.
 
     def set_ivar_and_flux(self,ivar_cut,ivar_factor):
         """

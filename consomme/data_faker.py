@@ -1,21 +1,6 @@
 import numpy as np
 
-def normalize_spectra(lamb, spectra, noise=None, wavelimits=(5500,6500)):
-
-    # normalize
-    ind = np.where((lamb > wavelimits[0]) & (lamb < wavelimits[1]))[0]
-    factors = np.mean(spectra[:,ind],axis=1)
-    
-    level = factors.max()
-
-    spectra /= factors[:,None] / level
-    if noise is not None:
-        noise /= factors[:,None] / level
-
-    return spectra, noise
-
-def noiseless_fake(N, Neig, scale=64., window=21, seed=None,
-                   wavelimits=(None, None)):
+def noiseless_fake(N, Neig, scale=64., window=21, seed=None):
     """
     Taking some eigenspectra from SDSS/Yip '04, constructing a toy.
     """
@@ -51,18 +36,10 @@ def noiseless_fake(N, Neig, scale=64., window=21, seed=None,
         for i in range(N):
             data[i, (window - 1) / 2:-(window - 1) / 2] = \
                 np.convolve(w / w.sum(), data[i, :], mode='valid')
-
-    # trim wavelength range
-    if wavelimits[0] is not None:
-        ind  = np.where((lamb > wavelimits[0]) & 
-                        (lamb < wavelimits[1]))[0]
-        data = data[:, ind] 
-        lamb = lamb[ind]
+        mean[(window - 1) / 2:-(window - 1) / 2] = \
+                np.convolve(w / w.sum(), mean, mode='valid')
         
-    # normalize spectra
-    spectra = normalize_spectra(lamb,data)[0]
-    
-    return lamb, spectra
+    return lamb, data, mean
 
 def add_noise(lam, spectra, n_range=(1, 2), uniform_across=True,
               uniform_within=True):
@@ -76,8 +53,8 @@ def add_noise(lam, spectra, n_range=(1, 2), uniform_across=True,
     if uniform_across:
         scales = np.ones(spectra.shape[0]) * n_range[0]
     else:
-        scales = np.random.rand(spectra.shape[0]) * n_range[0] + \
-            n_range[1] - n_range[0]
+        scales = np.random.rand(spectra.shape[0]) * \
+            (n_range[1] + n_range[0]) + n_range[0]
         
     # lines defining two halves of kink
     m1s = scales * (pt2[1]-pt1[1])/(pt2[0]-pt1[0])
@@ -105,12 +82,7 @@ def add_noise(lam, spectra, n_range=(1, 2), uniform_across=True,
     noise /= nm
     spectra /= nm
 
-    # normalize spectra
-    spectra, noise = normalize_spectra(lam,spectra,noise=noise)
-
     noisy_spectra = spectra + \
         np.random.randn(spectra.shape[0],spectra.shape[1]) * noise
 
-    return noisy_spectra, spectra, noise
-
-    
+    return noisy_spectra, spectra, noise, nm
